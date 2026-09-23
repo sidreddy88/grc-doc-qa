@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     max_pdf_pages: int = Field(default=500, gt=0)
     max_kb_rows: int = Field(default=5000, gt=0)
 
+    chunk_size_chars: int = Field(default=1000, gt=100)
+    chunk_overlap_chars: int = Field(default=150, ge=0)
+    # Knowledge-base rows are self-contained Q&A units, so they're only split when unusually long.
+    kb_row_max_chars: int = Field(default=2500, gt=100)
+
     request_timeout_s: float = Field(default=120.0, gt=0)
     llm_timeout_s: float = Field(default=30.0, gt=0)
     llm_max_retries: int = Field(default=2, ge=0)

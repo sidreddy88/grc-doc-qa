@@ -26,6 +26,12 @@ class Chunk:
     source_id: str | None = None
     section: str | None = None
 
+    @property
+    def index_text(self) -> str:
+        # Section title is indexed with the chunk so retrieval sees context the raw text lacks;
+        # citations and faithfulness checks still use the raw text.
+        return f"{self.section}\n{self.text}" if self.section else self.text
+
 
 @dataclass(slots=True)
 class CitationData:
