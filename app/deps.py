@@ -10,6 +10,7 @@ from app.services.qa_chain import AnswerSynthesizer
 from app.services.query_classifier import QueryClassifier
 from app.services.reranker import CrossEncoderReranker
 from app.services.retrieval import HybridRetriever
+from app.services.semantic_cache import SemanticAnswerCache
 
 
 def build_pipeline(settings: Settings) -> QAPipeline:
@@ -23,6 +24,16 @@ def build_pipeline(settings: Settings) -> QAPipeline:
         classifier=QueryClassifier(llm),
         synthesizer=AnswerSynthesizer(llm),
         judge=FaithfulnessJudge(llm),
+        answer_cache=build_answer_cache(settings),
+    )
+
+
+def build_answer_cache(settings: Settings) -> SemanticAnswerCache:
+    return SemanticAnswerCache(
+        similarity_threshold=settings.answer_cache_similarity,
+        max_entries_per_document=settings.answer_cache_entries_per_document,
+        max_documents=settings.index_cache_entries,
+        ttl_seconds=settings.answer_cache_ttl_s,
     )
 
 

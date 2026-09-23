@@ -10,13 +10,9 @@ from fastapi.testclient import TestClient
 from app.deps import get_pipeline
 from app.main import create_app
 from app.models import NOT_FOUND_ANSWER
-from app.services.faithfulness import FaithfulnessJudge
-from app.services.indexing import IndexService
 from app.services.pipeline import QAPipeline
 from app.services.qa_chain import AnswerSynthesizer
-from app.services.query_classifier import QueryClassifier
-from app.services.retrieval import HybridRetriever
-from tests.fakes import FakeEmbeddings, FakeReranker, ScriptedLLM, approve_all, grounded_synthesis
+from tests.fakes import ScriptedLLM, approve_all, grounded_synthesis, make_test_pipeline
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -29,16 +25,7 @@ def _files(questions: bytes, document: bytes, questions_name="questions.json", d
 
 
 def _pipeline(settings, llm) -> QAPipeline:
-    embeddings = FakeEmbeddings()
-    return QAPipeline(
-        settings=settings,
-        index_service=IndexService(embeddings, settings),
-        embeddings=embeddings,
-        retriever=HybridRetriever(FakeReranker(), settings),
-        classifier=QueryClassifier(llm),
-        synthesizer=AnswerSynthesizer(llm),
-        judge=FaithfulnessJudge(llm),
-    )
+    return make_test_pipeline(settings, llm)
 
 
 @pytest.fixture

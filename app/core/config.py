@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     index_cache_entries: int = Field(default=16, gt=0)
     index_cache_ttl_s: float = Field(default=3600.0, gt=0)
 
+    answer_cache_similarity: float = Field(default=0.97, gt=0, le=1)
+    answer_cache_entries_per_document: int = Field(default=512, gt=0)
+    answer_cache_ttl_s: float = Field(default=3600.0, gt=0)
+
     request_timeout_s: float = Field(default=120.0, gt=0)
     llm_timeout_s: float = Field(default=30.0, gt=0)
     llm_max_retries: int = Field(default=2, ge=0)

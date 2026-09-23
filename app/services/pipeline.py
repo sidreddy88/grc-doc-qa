@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -23,6 +23,7 @@ from app.services.llm import TokenUsage
 from app.services.qa_chain import AnswerSynthesizer, Draft
 from app.services.query_classifier import QueryClassifier
 from app.services.retrieval import HybridRetriever, RetrievedChunk
+from app.services.semantic_cache import CacheHit, SemanticAnswerCache
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class QuestionTrace:
     faithfulness: str = "not_run"
     citations_dropped: int = 0
     outcome: str = ""
+    answer_cache: CacheHit = CacheHit.MISS
     usage: TokenUsage = field(default_factory=TokenUsage)
 
 
@@ -47,6 +49,7 @@ class RequestStats:
     questions: int
     unique_questions: int
     index_cache_hit: bool
+    answer_cache_hits: int
     usage: TokenUsage
 
 
@@ -73,8 +76,10 @@ class QAPipeline:
         classifier: QueryClassifier,
         synthesizer: AnswerSynthesizer,
         judge: FaithfulnessJudge,
+        answer_cache: SemanticAnswerCache,
     ) -> None:
         self._settings = settings
+        self._answer_cache = answer_cache
         self._index_service = index_service
         self._embeddings = embeddings
         self._retriever = retriever
@@ -118,6 +123,7 @@ class QAPipeline:
             questions=len(questions),
             unique_questions=len(unique),
             index_cache_hit=index_cache_hit,
+            answer_cache_hits=sum(1 for _, trace in answered.values() if trace.answer_cache is not CacheHit.MISS),
             usage=usage,
         )
         return PipelineResult(results=[answered[q][0] for q in questions], stats=stats)
@@ -127,18 +133,26 @@ class QAPipeline:
     ) -> tuple[AnswerResult, QuestionTrace]:
         started = time.perf_counter()
         trace = QuestionTrace()
-        try:
-            result = await self._run(index, question, vector, trace)
-        except UpstreamServiceError as error:
-            trace.outcome = "error"
-            result = AnswerResult(
-                question=question,
-                answer=_UNAVAILABLE_ANSWER,
-                error=QuestionError(code=error.code, message=error.message),
-            )
+        cached, trace.answer_cache = self._answer_cache.lookup(index.doc_hash, question, vector)
+        if cached is not None:
+            trace.outcome = "cache_hit"
+            # A semantic hit was answered for a differently worded question; report the one actually asked.
+            result = replace(cached, question=question)
+        else:
+            try:
+                result = await self._run(index, question, vector, trace)
+                self._answer_cache.store(index.doc_hash, question, vector, result)
+            except UpstreamServiceError as error:
+                trace.outcome = "error"
+                result = AnswerResult(
+                    question=question,
+                    answer=_UNAVAILABLE_ANSWER,
+                    error=QuestionError(code=error.code, message=error.message),
+                )
         logger.info(
             "question_answered",
             extra={
+                "answer_cache": trace.answer_cache.value,
                 "question_type": trace.question_type,
                 "classifier_path": trace.classifier_path,
                 "top_relevance": None if trace.top_relevance is None else round(trace.top_relevance, 5),

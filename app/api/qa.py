@@ -88,6 +88,7 @@ async def answer_questions(
         questions=stats.questions,
         unique_questions=stats.unique_questions,
         index_cache_hit=stats.index_cache_hit,
+        answer_cache_hits=stats.answer_cache_hits,
         usage=Usage(
             llm_calls=stats.usage.calls,
             input_tokens=stats.usage.input_tokens,

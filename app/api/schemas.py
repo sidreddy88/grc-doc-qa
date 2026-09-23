@@ -43,6 +43,7 @@ class QAMeta(BaseModel):
     questions: int
     unique_questions: int
     index_cache_hit: bool
+    answer_cache_hits: int
     usage: Usage
 
 

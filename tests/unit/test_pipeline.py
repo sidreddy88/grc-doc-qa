@@ -5,18 +5,12 @@ import pytest
 from app.core.config import Settings
 from app.core.exceptions import ConfigurationError, UpstreamServiceError
 from app.models import NOT_FOUND_ANSWER, DocumentType
-from app.services.faithfulness import FaithfulnessJudge
-from app.services.indexing import IndexService
 from app.services.pipeline import QAPipeline
-from app.services.qa_chain import AnswerSynthesizer
-from app.services.query_classifier import QueryClassifier
-from app.services.retrieval import HybridRetriever
 from tests.fakes import (
-    FakeEmbeddings,
-    FakeReranker,
     ScriptedLLM,
     approve_all,
     grounded_synthesis,
+    make_test_pipeline,
     parse_sources,
     reject_all,
 )
@@ -31,16 +25,7 @@ DOCUMENT = json.dumps(KB).encode()
 
 def make_pipeline(llm: ScriptedLLM, **overrides) -> QAPipeline:
     settings = Settings(_env_file=None, retrieval_candidates=3, rerank_candidates=3, top_k_default=2, **overrides)
-    embeddings = FakeEmbeddings()
-    return QAPipeline(
-        settings=settings,
-        index_service=IndexService(embeddings, settings),
-        embeddings=embeddings,
-        retriever=HybridRetriever(FakeReranker(), settings),
-        classifier=QueryClassifier(llm),
-        synthesizer=AnswerSynthesizer(llm),
-        judge=FaithfulnessJudge(llm),
-    )
+    return make_test_pipeline(settings, llm)
 
 
 async def run(pipeline: QAPipeline, *questions: str):
@@ -145,3 +130,26 @@ async def test_configuration_error_aborts_the_request():
     llm = ScriptedLLM({"_SynthesisOutput": [ConfigurationError("no key")]})
     with pytest.raises(ConfigurationError):
         await run(make_pipeline(llm), "Is data encrypted at rest?", "Which cloud provider hosts the service?")
+
+
+async def test_repeat_request_is_served_from_the_answer_cache():
+    llm = ScriptedLLM({"_SynthesisOutput": [grounded_synthesis()], "_JudgeOutput": [approve_all]})
+    pipeline = make_pipeline(llm)
+    first = await run(pipeline, "Is data encrypted at rest?")
+    calls_after_first = len(llm.calls)
+    second = await run(pipeline, "Is data encrypted at rest?")
+    assert len(llm.calls) == calls_after_first
+    assert second.results[0].answer == first.results[0].answer
+    assert (first.stats.answer_cache_hits, second.stats.answer_cache_hits) == (0, 1)
+    assert second.stats.index_cache_hit is True
+
+
+async def test_reworded_question_hits_semantically_and_reports_the_asked_wording():
+    llm = ScriptedLLM({"_SynthesisOutput": [grounded_synthesis()], "_JudgeOutput": [approve_all]})
+    pipeline = make_pipeline(llm)
+    await run(pipeline, "Is data encrypted at rest?")
+    # Fake embeddings drop stopwords, so this rewording embeds identically but normalizes differently.
+    output = await run(pipeline, "Is the data encrypted at rest?")
+    assert output.stats.answer_cache_hits == 1
+    assert output.results[0].question == "Is the data encrypted at rest?"
+    assert len(llm.calls_for("_SynthesisOutput")) == 1

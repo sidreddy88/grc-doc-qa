@@ -87,6 +87,29 @@ def reject_all(system: str, user: str) -> dict:
     return {"verdicts": [{"claim_id": cid, "faithful": False, "reason": "unsupported"} for cid in re.findall(r"^claim_id: (\S+)", user, re.M)]}
 
 
+def make_test_pipeline(settings, llm):
+    """The real QAPipeline wired with deterministic model fakes and a scripted LLM."""
+    from app.deps import build_answer_cache
+    from app.services.faithfulness import FaithfulnessJudge
+    from app.services.indexing import IndexService
+    from app.services.pipeline import QAPipeline
+    from app.services.qa_chain import AnswerSynthesizer
+    from app.services.query_classifier import QueryClassifier
+    from app.services.retrieval import HybridRetriever
+
+    embeddings = FakeEmbeddings()
+    return QAPipeline(
+        settings=settings,
+        index_service=IndexService(embeddings, settings),
+        embeddings=embeddings,
+        retriever=HybridRetriever(FakeReranker(), settings),
+        classifier=QueryClassifier(llm),
+        synthesizer=AnswerSynthesizer(llm),
+        judge=FaithfulnessJudge(llm),
+        answer_cache=build_answer_cache(settings),
+    )
+
+
 class FakeReranker:
     """Relevance = fraction of query tokens present in the passage."""
 
