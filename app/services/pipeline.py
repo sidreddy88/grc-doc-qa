@@ -94,6 +94,7 @@ class QAPipeline:
 
     async def answer(self, questions: list[str], document: bytes, doc_type: DocumentType) -> PipelineResult:
         started = time.perf_counter()
+        self._synthesizer.check_ready()  # fail fast on missing config rather than after indexing
         index, index_cache_hit = await self._index_service.get_index(document, doc_type)
 
         unique = list(dict.fromkeys(questions))  # identical questions are answered once

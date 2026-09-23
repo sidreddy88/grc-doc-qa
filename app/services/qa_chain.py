@@ -152,6 +152,9 @@ class AnswerSynthesizer:
     def __init__(self, llm: StructuredLLM) -> None:
         self._llm = llm
 
+    def check_ready(self) -> None:
+        self._llm.check_ready()
+
     async def synthesize(
         self, question: str, question_type: QuestionType, items: list[str], contexts: list[Chunk]
     ) -> Draft:

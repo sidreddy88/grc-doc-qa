@@ -40,6 +40,9 @@ class ScriptedLLM:
         self.calls: list[tuple[str, str]] = []
         self._usage = usage
 
+    def check_ready(self) -> None:
+        pass
+
     async def generate(self, system: str, user: str, schema):
         from app.services.llm import LLMResult, TokenUsage
 

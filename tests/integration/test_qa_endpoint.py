@@ -11,7 +11,7 @@ from app.deps import get_pipeline
 from app.main import create_app
 from app.models import NOT_FOUND_ANSWER
 from app.services.pipeline import QAPipeline
-from app.services.qa_chain import AnswerSynthesizer
+from app.services.llm import OpenAIStructuredLLM
 from tests.fakes import ScriptedLLM, approve_all, grounded_synthesis, make_test_pipeline
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
@@ -138,19 +138,17 @@ class TestErrors:
         assert response.status_code == 504
         assert response.json()["error"]["code"] == "processing_timeout"
 
-    def test_missing_api_key_is_503(self, settings):
-        llm = ScriptedLLM()  # never reached: the real client refuses to run without a key
-        from app.services.llm import OpenAIStructuredLLM
-
-        real_llm = OpenAIStructuredLLM(settings)
+    def test_missing_api_key_fails_fast_with_503(self, settings):
+        # The real LLM client, with no key configured: the request must fail before indexing starts.
+        pipeline = _pipeline(settings, OpenAIStructuredLLM(settings))
         app = create_app(settings)
-        pipeline = _pipeline(settings, llm)
-        pipeline._synthesizer = AnswerSynthesizer(real_llm)
         app.dependency_overrides[get_pipeline] = lambda: pipeline
         questions = json.dumps(["Which cloud providers do you rely on?"]).encode()
-        response = TestClient(app).post("/qa", files=_files(questions, (FIXTURES / "nave_kb.json").read_bytes(), document_name="kb.json"))
+        document = (FIXTURES / "nave_kb.json").read_bytes()
+        response = TestClient(app).post("/qa", files=_files(questions, document, document_name="kb.json"))
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "service_misconfigured"
+        assert len(pipeline._index_service._cache) == 0
 
     def test_unexpected_error_is_500_without_leaking_details(self, settings, questions_bytes, minimal_pdf_bytes):
         class BrokenPipeline:

@@ -34,6 +34,10 @@ class LLMResult(Generic[SchemaT]):
 
 
 class StructuredLLM(Protocol):
+    def check_ready(self) -> None:
+        """Raise ConfigurationError if the model can't be called, before any expensive work starts."""
+        ...
+
     async def generate(self, system: str, user: str, schema: type[SchemaT]) -> LLMResult[SchemaT]: ...
 
 
@@ -49,9 +53,12 @@ class OpenAIStructuredLLM:
         self._chat: ChatOpenAI | None = None
         self._runnables: dict[type[BaseModel], Any] = {}
 
-    def _runnable(self, schema: type[BaseModel]):
-        if self._settings.openai_api_key is None:
+    def check_ready(self) -> None:
+        if self._settings.openai_api_key is None or not self._settings.openai_api_key.get_secret_value().strip():
             raise ConfigurationError("OPENAI_API_KEY is not set; the service cannot call the language model.")
+
+    def _runnable(self, schema: type[BaseModel]):
+        self.check_ready()
         if self._chat is None:
             self._chat = ChatOpenAI(
                 model=self._settings.llm_model,
