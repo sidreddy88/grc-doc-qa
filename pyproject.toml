@@ -1,0 +1,41 @@
+[project]
+name = "grc-doc-qa"
+version = "0.1.0"
+description = "RAG question-answering API over compliance documents (SOC 2 reports, security KBs)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.53.0",
+    "python-multipart==0.0.32",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "langchain-core==1.6.4",
+    "langchain-openai==1.6.5",
+    "langchain-community==0.4.2",
+    "langchain-text-splitters==1.1.2",
+    "openai==3.19.1",
+    "faiss-cpu==1.15.1",
+    "rank-bm25==0.2.2",
+    "sentence-transformers==6.1.0",
+    "pypdf==6.19.0",
+    "numpy==2.5.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "httpx==0.28.1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
