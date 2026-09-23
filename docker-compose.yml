@@ -1,0 +1,11 @@
+services:
+  api:
+    build: .
+    image: grc-doc-qa:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # Read from your shell or a local .env file (never committed).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in your shell or .env}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    restart: unless-stopped
