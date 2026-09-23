@@ -138,28 +138,39 @@ Errors share one shape: `{"error": {"code", "message", "request_id"}}`.
 
 ## How it works
 
-```
-upload ─► validate (type sniffing, size, count)
-       ─► index document once per SHA-256  ───────────────────────────── [cached]
-            PDF:  extract pages, strip running header / page numbers, skip ToC and
-                  divider pages, tag sections from the ToC, split into ~1000-char chunks
-            JSON: one retrieval unit per knowledge-base record
-            embed (bge-small, local) into FAISS  +  BM25 over the same chunks
-       ─► per question, concurrently (bounded):
-            answer cache (exact, then cosine ≥ 0.97 on the same document) ──► hit: done
-            classify: boolean / factual / explanatory / checklist
-                      (heuristics first, gpt-4o-mini only if no rule matches)
-            retrieve: FAISS + BM25 → weighted fusion → cross-encoder rerank → RRF → top-k
-                      (checklists retrieve per option as well)
-            gate:     best cross-encoder score below threshold ──► "Not found", no LLM call
-            answer:   gpt-4o-mini, strict JSON schema, cites sources by label + verbatim quote
-            verify:   Layer 1  each quote must occur in its source chunk (deterministic)
-                      Layer 2  LLM judge: are the claims entailed by the verified quotes?
-                      either fails ──► "Not found in document"
-       ─► results in input order + meta
+```mermaid
+flowchart TD
+    A([POST /qa with questions + document]) --> B{Files valid?}
+    B -- no --> E[4xx error with code and request id]
+    B -- yes --> C{Document already indexed?<br/>lookup by SHA-256}
+    C -- no --> D[Parse and chunk<br/>PDF: pages tagged with ToC sections<br/>JSON: one chunk per record]
+    D --> D2[Embed chunks into FAISS<br/>and build a BM25 index]
+    D2 --> F
+    C -- yes --> F[Answer each unique question in parallel]
+    F --> G{Answer cache hit?<br/>exact match, or cosine ≥ 0.97}
+    G -- yes --> R
+    G -- no --> H[Classify the question<br/>boolean · factual · explanatory · checklist]
+    H --> I[Hybrid retrieval<br/>FAISS + BM25 → fusion → cross-encoder → RRF]
+    I --> J{Best chunk relevant enough?}
+    J -- no --> NF[Not found in document]
+    J -- yes --> K[gpt-4o-mini drafts the answer<br/>citing sources with verbatim quotes]
+    K --> L{Layer 1<br/>do the quotes exist in the cited chunks?}
+    L -- no --> NF
+    L -- yes --> M{Layer 2<br/>does an LLM judge find the claims supported?}
+    M -- no --> NF
+    M -- yes --> OK[Answer with page and section citations]
+    OK --> S[(Answer cache)]
+    NF --> S
+    S --> R[Results in input order, plus meta]
 ```
 
-Normally that's two LLM calls per question (answer and judge). A third, for classification, only happens when no heuristic matches, and none of the sample questions need it.
+- **Indexing** happens once per document. Repeat uploads of the same file skip straight to answering.
+- **Classification** uses heuristics first. gpt-4o-mini is only asked when no rule matches, and none of the sample questions need it.
+- **Checklist questions** ("which of the following…") retrieve evidence for each option, and each option is answered and verified on its own.
+- **The relevance gate** uses the cross-encoder's score. Questions the document clearly can't answer never reach the LLM.
+- **Citations** come from the document itself. The model cites sources by label, and page, section and excerpt are filled in from the indexed chunk, so the model can't invent a page number.
+
+Normally that's two LLM calls per question: one to answer and one to judge.
 
 ## Configuration
 
