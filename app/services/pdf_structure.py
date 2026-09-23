@@ -9,7 +9,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
-from app.services.text import fold_for_match, normalize_whitespace
+from app.services.text import fold_for_match, fold_quotes, normalize_whitespace
 
 _TOC_MARKER = "table of contents"
 _TOC_ENTRY = re.compile(r"^\s*(?P<title>.*?\S)\s*(?:\.{2,}\s*|\s{2,})(?P<page>\d{1,4})\s*$")
@@ -80,21 +80,25 @@ def locate_headings(pages: list[tuple[int, str]], titles: list[str]) -> list[Hea
     """Find where each ToC title actually occurs in the body text.
 
     ToC page numbers are unreliable (often offset from the physical page), so
-    titles are matched against page text in document order instead. A small
-    lookahead lets matching skip titles that never appear verbatim.
+    titles are matched against page text in document order instead. Matching is
+    case-sensitive because headings reproduce the ToC's casing while incidental
+    mentions in prose usually don't ("Opinion" vs "express an opinion"). The next
+    expected title wins over later ones; a small lookahead lets matching skip
+    titles that never appear in the body (e.g. ones only on divider slides).
     """
-    patterns = [re.compile(rf"(?<!\w){re.escape(fold_for_match(title))}(?!\w)") for title in titles]
+    patterns = [re.compile(rf"(?<!\w){re.escape(fold_quotes(title))}(?!\w)") for title in titles]
     headings: list[Heading] = []
     next_title = 0
     for page_number, text in pages:
-        folded = fold_for_match(text)
+        folded = fold_quotes(text)
         position = 0
         while next_title < len(titles):
             best: tuple[int, int] | None = None
             for index in range(next_title, min(next_title + _HEADING_LOOKAHEAD, len(titles))):
                 match = patterns[index].search(folded, position)
-                if match and (best is None or match.start() < best[1]):
+                if match:
                     best = (index, match.start())
+                    break
             if best is None:
                 break
             index, offset = best

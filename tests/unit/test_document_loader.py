@@ -32,6 +32,14 @@ class TestRealSoc2Pdf:
         assert segment.section == "3.4 Third Party Access:"
         assert "GCP Cloud hosting provider" in segment.text
 
+    def test_early_sections_are_labeled_on_their_real_pages(self, nave_pdf):
+        first_section_page = {}
+        for segment in nave_pdf.segments:
+            first_section_page.setdefault(segment.section, segment.page)
+        assert first_section_page["Management’s Assertion"] == 6
+        assert first_section_page["Inherent Limitations"] == 10
+        assert first_section_page["Opinion"] == 11
+
     def test_section_changes_mid_page(self, nave_pdf):
         sections_on_14 = [s.section for s in nave_pdf.segments if s.page == 14]
         assert sections_on_14[0].startswith("DC 1")

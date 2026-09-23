@@ -20,6 +20,11 @@ def normalize_whitespace(text: str) -> str:
     return _WHITESPACE.sub(" ", text).strip()
 
 
+def fold_quotes(text: str) -> str:
+    """Unify typographic quotes and dashes; preserves case and length."""
+    return text.translate(_QUOTE_FOLD)
+
+
 def fold_for_match(text: str) -> str:
     """Lowercase and unify typographic quotes/dashes without changing string length.
 

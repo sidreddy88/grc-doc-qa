@@ -7,7 +7,7 @@ from app.services.pdf_structure import (
     split_at_headings,
     strip_page_furniture,
 )
-from app.services.text import fold_for_match
+
 
 HEADER = "Acme SOC 2 Report on Controls"
 
@@ -68,6 +68,21 @@ def test_locate_headings_in_order_with_quote_folding():
     assert [(h.page, h.title) for h in headings] == [(6, "Management's Assertion"), (9, "Scope"), (9, "Opinion")]
 
 
+def test_lowercase_prose_mention_does_not_count_as_a_heading():
+    pages = [(10, "Our job is to express an opinion. Inherent Limitations Controls may fail."), (11, "Opinion In our view.")]
+    headings = locate_headings(pages, ["Inherent Limitations", "Opinion"])
+    assert [(h.page, h.title) for h in headings] == [(10, "Inherent Limitations"), (11, "Opinion")]
+
+
+def test_next_expected_title_wins_over_a_later_title_seen_earlier():
+    # A cover page mentioning a later section title must not make matching skip the earlier one.
+    pages = [(1, "Assertion Report Summary"), (6, "Assertion We confirm."), (9, "Report To: NAVE")]
+    headings = locate_headings(pages, ["Assertion", "Report"])
+    assert [(h.page, h.title) for h in headings] == [(1, "Assertion"), (1, "Report")]
+    cover_free = locate_headings(pages[1:], ["Assertion", "Report"])
+    assert [(h.page, h.title) for h in cover_free] == [(6, "Assertion"), (9, "Report")]
+
+
 def test_locate_headings_skips_titles_that_never_appear():
     pages = [(1, "Intro text. Beta section starts. Gamma follows.")]
     headings = locate_headings(pages, ["Alpha", "Beta", "Gamma"])
@@ -75,9 +90,9 @@ def test_locate_headings_skips_titles_that_never_appear():
 
 
 def test_locate_headings_requires_word_boundaries():
-    pages = [(1, "Telescope readings. Scope of work.")]
+    pages = [(1, "TeleScope readings. Scope of work.")]
     headings = locate_headings(pages, ["Scope"])
-    assert headings[0].offset == fold_for_match(pages[0][1]).index("scope of")
+    assert headings[0].offset == pages[0][1].index("Scope of")
 
 
 def test_split_at_headings_carries_section_across_pages():
