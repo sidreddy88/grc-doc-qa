@@ -14,6 +14,11 @@ class ChecklistItem(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
 
 
+class QuestionError(BaseModel):
+    code: str
+    message: str
+
+
 class QAResult(BaseModel):
     question: str
     answer: str
@@ -21,10 +26,29 @@ class QAResult(BaseModel):
     items: list[ChecklistItem] | None = Field(
         default=None, description="Per-item breakdown, present only for 'which of the following' questions."
     )
+    error: QuestionError | None = Field(
+        default=None, description="Set when this question could not be processed (other questions still succeed)."
+    )
+
+
+class Usage(BaseModel):
+    llm_calls: int
+    input_tokens: int
+    output_tokens: int
+
+
+class QAMeta(BaseModel):
+    request_id: str | None = None
+    latency_ms: int
+    questions: int
+    unique_questions: int
+    index_cache_hit: bool
+    usage: Usage
 
 
 class QAResponse(BaseModel):
     results: list[QAResult]
+    meta: QAMeta | None = None
 
 
 class ErrorDetail(BaseModel):

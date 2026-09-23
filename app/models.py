@@ -49,9 +49,16 @@ class ItemResult:
     citations: list[CitationData] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class QuestionError:
+    code: str
+    message: str
+
+
 @dataclass(slots=True)
 class AnswerResult:
     question: str
     answer: str
     citations: list[CitationData] = field(default_factory=list)
     items: list[ItemResult] | None = None
+    error: QuestionError | None = None

@@ -55,6 +55,9 @@ class HybridRetriever:
         self._reranker = reranker
         self._settings = settings
 
+    def warm_up(self) -> None:
+        self._reranker.score("warm up", ["warm up"])
+
     def retrieve(self, index: DocumentIndex, query: str, query_vector: np.ndarray, k: int) -> list[RetrievedChunk]:
         if not index.chunks:
             return []

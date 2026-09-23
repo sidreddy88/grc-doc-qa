@@ -1,6 +1,7 @@
 """Deterministic stand-ins for the ML models so tests never download weights or call APIs."""
 
 import hashlib
+import re
 
 import numpy as np
 
@@ -59,6 +60,31 @@ class ScriptedLLM:
 
     def calls_for(self, name: str) -> list[str]:
         return [user for schema, user in self.calls if schema == name]
+
+
+_SOURCE_BLOCK = re.compile(r"^\[(S\d+)\] \([^)]*\)\n(.+?)(?=\n\n\[S\d+\] |\n</sources>)", re.M | re.S)
+
+
+def parse_sources(user_prompt: str) -> dict[str, str]:
+    return {label: text for label, text in _SOURCE_BLOCK.findall(user_prompt)}
+
+
+def grounded_synthesis(answer: str = "Grounded answer.", source: str = "S1", quote_chars: int = 60):
+    """Synthesis response that quotes the start of a real source from the prompt."""
+
+    def respond(system: str, user: str) -> dict:
+        text = parse_sources(user)[source]
+        return {"supported": True, "answer": answer, "citations": [{"source": source, "quote": text[:quote_chars]}], "items": []}
+
+    return respond
+
+
+def approve_all(system: str, user: str) -> dict:
+    return {"verdicts": [{"claim_id": cid, "faithful": True, "reason": "ok"} for cid in re.findall(r"^claim_id: (\S+)", user, re.M)]}
+
+
+def reject_all(system: str, user: str) -> dict:
+    return {"verdicts": [{"claim_id": cid, "faithful": False, "reason": "unsupported"} for cid in re.findall(r"^claim_id: (\S+)", user, re.M)]}
 
 
 class FakeReranker:

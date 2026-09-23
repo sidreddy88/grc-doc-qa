@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     rerank_candidates: int = Field(default=20, gt=0)
     top_k_default: int = Field(default=5, gt=0)
     top_k_explanatory: int = Field(default=8, gt=0)
+    top_k_checklist_item: int = Field(default=3, gt=0)
+    max_context_chunks: int = Field(default=12, gt=0)
     # Below this cross-encoder probability for the best chunk, skip the LLM and answer "Not found".
     # Calibrated on the sample SOC 2 report: unanswerable questions scored < 1e-4, answerable ones > 2e-3.
     min_relevance: float = Field(default=5e-4, ge=0, le=1)
@@ -42,6 +44,7 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=2, ge=0)
     max_concurrency: int = Field(default=5, gt=0)
 
+    warm_up_models: bool = True
     log_level: str = "INFO"
 
 
