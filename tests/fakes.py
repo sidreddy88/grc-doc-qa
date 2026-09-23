@@ -27,6 +27,40 @@ class FakeEmbeddings(LocalEmbeddings):
         return vectors / np.where(norms == 0, 1.0, norms)
 
 
+class ScriptedLLM:
+    """StructuredLLM double. Responses are queued per schema class name.
+
+    A queued item may be a dict (validated into the schema), an exception (raised),
+    or a callable taking (system, user) and returning either of those.
+    """
+
+    def __init__(self, script: dict[str, list] | None = None, usage: tuple[int, int] = (100, 20)) -> None:
+        self.script = {name: list(items) for name, items in (script or {}).items()}
+        self.calls: list[tuple[str, str]] = []
+        self._usage = usage
+
+    async def generate(self, system: str, user: str, schema):
+        from app.services.llm import LLMResult, TokenUsage
+
+        name = schema.__name__
+        self.calls.append((name, user))
+        queue = self.script.get(name)
+        if not queue:
+            raise AssertionError(f"Unexpected LLM call for {name}")
+        item = queue.pop(0) if len(queue) > 1 else queue[0]
+        if callable(item) and not isinstance(item, type):
+            item = item(system, user)
+        if isinstance(item, BaseException):
+            raise item
+        return LLMResult(
+            value=schema.model_validate(item),
+            usage=TokenUsage(input_tokens=self._usage[0], output_tokens=self._usage[1], calls=1),
+        )
+
+    def calls_for(self, name: str) -> list[str]:
+        return [user for schema, user in self.calls if schema == name]
+
+
 class FakeReranker:
     """Relevance = fraction of query tokens present in the passage."""
 
