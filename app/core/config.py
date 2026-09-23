@@ -9,7 +9,8 @@ class Settings(BaseSettings):
 
     openai_api_key: SecretStr | None = None
     llm_model: str = "gpt-4o-mini"
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_query_prefix: str = "Represent this sentence for searching relevant passages: "
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     max_document_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
@@ -23,6 +24,18 @@ class Settings(BaseSettings):
     chunk_overlap_chars: int = Field(default=150, ge=0)
     # Knowledge-base rows are self-contained Q&A units, so they're only split when unusually long.
     kb_row_max_chars: int = Field(default=2500, gt=100)
+
+    retrieval_candidates: int = Field(default=20, gt=0)
+    fusion_vector_weight: float = Field(default=0.7, ge=0, le=1)
+    rerank_candidates: int = Field(default=20, gt=0)
+    top_k_default: int = Field(default=5, gt=0)
+    top_k_explanatory: int = Field(default=8, gt=0)
+    # Below this cross-encoder probability for the best chunk, skip the LLM and answer "Not found".
+    # Calibrated on the sample SOC 2 report: unanswerable questions scored < 1e-4, answerable ones > 2e-3.
+    min_relevance: float = Field(default=5e-4, ge=0, le=1)
+
+    index_cache_entries: int = Field(default=16, gt=0)
+    index_cache_ttl_s: float = Field(default=3600.0, gt=0)
 
     request_timeout_s: float = Field(default=120.0, gt=0)
     llm_timeout_s: float = Field(default=30.0, gt=0)

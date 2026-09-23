@@ -18,6 +18,7 @@ dependencies = [
     "faiss-cpu==1.15.1",
     "rank-bm25==0.2.2",
     "sentence-transformers==6.1.0",
+    "torch==2.14.0",
     "pypdf==6.19.0",
     "numpy==2.5.3",
 ]
@@ -39,3 +40,7 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+    # FAISS still ships only in langchain-community; see NOTES.md.
+    "ignore:`langchain-community` is being sunset:DeprecationWarning",
+]
