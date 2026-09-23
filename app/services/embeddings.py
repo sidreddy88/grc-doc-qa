@@ -7,7 +7,7 @@ from langchain_core.embeddings import Embeddings
 class LocalEmbeddings(Embeddings):
     """LangChain Embeddings backed by a local sentence-transformers model.
 
-    Local on purpose: the challenge restricts the OpenAI key to gpt-4o-mini, and a
+    Local on purpose: the OpenAI key is reserved for gpt-4o-mini generation, and a
     small CPU model is fast enough for single-document corpora (a few hundred chunks).
     Vectors are L2-normalized so inner product equals cosine similarity.
     """

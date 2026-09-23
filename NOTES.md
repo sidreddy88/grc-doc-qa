@@ -44,7 +44,7 @@ If either layer fails, the answer becomes "Not found in document".
 
 ### 3. Local embeddings and reranker
 
-The challenge says to use `gpt-4o-mini` only, and the provided key may not allow embedding models. So `BAAI/bge-small-en-v1.5` (embeddings) and `cross-encoder/ms-marco-MiniLM-L-6-v2` (reranking) run locally on CPU. `sentence-transformers` was already needed for the reranker, so this added no new dependency.
+The service is restricted to `gpt-4o-mini`, and an API key scoped to that model may not allow embedding models. So `BAAI/bge-small-en-v1.5` (embeddings) and `cross-encoder/ms-marco-MiniLM-L-6-v2` (reranking) run locally on CPU. `sentence-transformers` was already needed for the reranker, so this added no new dependency.
 
 - Costs: a larger Docker image (~2.5 GB with CPU torch and about 200 MB of weights baked in), and indexing time the first time a new document is seen. For the 84-page sample that's about 10 s natively on an Apple Silicon Mac and about 50 s in Docker on the same machine. After that, the index cache makes repeats instant.
 - Benefits: no per-token embedding cost, no rate limits, no network dependency for retrieval, and the key budget goes only to generation.
@@ -110,7 +110,7 @@ Retries and per-call timeouts come from the OpenAI client. An overall `asyncio.t
 
 ## Evals: what I'd build next
 
-I deliberately didn't build an eval harness for this exercise. It's the next thing I'd add, and several thresholds above are waiting on it.
+I deliberately didn't build an eval harness yet. It's the next thing I'd add, and several thresholds above are waiting on it.
 
 One distinction matters first: **the Layer 2 judge is a guard, not an eval.** It blocks individual bad answers at request time, but it doesn't tell you whether the system is getting better or worse, how often it wrongly says "Not found", or whether a prompt change helped.
 
