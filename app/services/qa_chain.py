@@ -117,12 +117,22 @@ def _resolve_citations(citations: list[_Citation], contexts: list[Chunk]) -> lis
 
 
 def _align_items(requested: list[str], returned: list[_ItemAnswer], contexts: list[Chunk]) -> list[DraftItem]:
-    """Map model output back onto the requested options by name, falling back to position."""
-    by_name = {fold_for_match(normalize_whitespace(item.item)): item for item in returned}
+    """Map model output back onto the requested options by name.
+
+    Position is only trusted when the model returned exactly one entry per option
+    and that entry isn't claimed by name for a different option; otherwise an
+    unmatched option is treated as unanswered rather than borrowing another's answer.
+    """
+    def key(text: str) -> str:
+        return fold_for_match(normalize_whitespace(text))
+
+    by_name = {key(item.item): item for item in returned}
+    requested_keys = {key(option) for option in requested}
+    positional = len(returned) == len(requested)
     aligned = []
     for position, option in enumerate(requested):
-        match = by_name.get(fold_for_match(normalize_whitespace(option)))
-        if match is None and position < len(returned):
+        match = by_name.get(key(option))
+        if match is None and positional and key(returned[position].item) not in requested_keys:
             match = returned[position]
         if match is None or not match.supported:
             aligned.append(DraftItem(item=option, supported=False, answer=NOT_FOUND_ANSWER))
