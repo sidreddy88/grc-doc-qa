@@ -35,6 +35,7 @@ class Usage(BaseModel):
     llm_calls: int
     input_tokens: int
     output_tokens: int
+    estimated_cost_usd: float
 
 
 class QAMeta(BaseModel):

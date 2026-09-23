@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.api.qa import router as qa_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
+from app.core.logging import RequestContextMiddleware, configure_logging
 from app.core.middleware import BodySizeLimitMiddleware
 from app.deps import build_pipeline
 
@@ -19,6 +20,7 @@ _MULTIPART_OVERHEAD_BYTES = 64 * 1024
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging(settings.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -39,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         BodySizeLimitMiddleware,
         max_body_bytes=settings.max_document_bytes + settings.max_questions_bytes + _MULTIPART_OVERHEAD_BYTES,
     )
+    app.add_middleware(RequestContextMiddleware)  # added last = outermost, so every response gets an id
     app.dependency_overrides[get_settings] = lambda: settings
     register_error_handlers(app)
     app.include_router(qa_router)

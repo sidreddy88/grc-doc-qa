@@ -37,6 +37,6 @@ def build_answer_cache(settings: Settings) -> SemanticAnswerCache:
     )
 
 
-def get_pipeline(request: Request) -> QAPipeline:
+async def get_pipeline(request: Request) -> QAPipeline:
     """One pipeline per process (built at startup): models load once and caches are shared across requests."""
     return request.app.state.pipeline

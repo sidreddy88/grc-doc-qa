@@ -2,6 +2,8 @@ from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.logging import request_id_var
+
 
 class RequestBodyTooLarge(HTTPException):
     def __init__(self, max_bytes: int) -> None:
@@ -28,10 +30,10 @@ class BodySizeLimitMiddleware:
         if content_length is not None and content_length.isdigit() and int(content_length) > self.max_body_bytes:
             # Outside the exception-handling layer here, so respond directly rather than raising.
             error = RequestBodyTooLarge(self.max_body_bytes)
-            response = JSONResponse(
-                status_code=error.status_code,
-                content={"error": {"code": "request_too_large", "message": error.detail}},
-            )
+            body = {"code": "request_too_large", "message": error.detail}
+            if request_id := request_id_var.get():
+                body["request_id"] = request_id
+            response = JSONResponse(status_code=error.status_code, content={"error": body})
             await response(scope, receive, send)
             return
 

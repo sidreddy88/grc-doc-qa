@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=2, ge=0)
     max_concurrency: int = Field(default=5, gt=0)
 
+    # Published gpt-4o-mini prices (USD per million tokens), used only for cost estimates in logs/meta.
+    llm_input_usd_per_mtok: float = Field(default=0.15, ge=0)
+    llm_output_usd_per_mtok: float = Field(default=0.60, ge=0)
+
     warm_up_models: bool = True
     log_level: str = "INFO"
 

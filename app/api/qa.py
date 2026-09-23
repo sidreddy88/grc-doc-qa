@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
@@ -17,10 +18,11 @@ from app.api.uploads import read_upload_limited
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ProcessingTimeoutError
 from app.deps import get_pipeline
-from app.models import AnswerResult, CitationData
+from app.models import NOT_FOUND_ANSWER, AnswerResult, CitationData
 from app.services.pipeline import QAPipeline
 from app.services.validation import detect_document_type, parse_questions, validate_questions_filename
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _ERROR_RESPONSES = {
@@ -82,6 +84,16 @@ async def answer_questions(
         ) from error
 
     stats = output.stats
+    cost = (
+        stats.usage.input_tokens * settings.llm_input_usd_per_mtok
+        + stats.usage.output_tokens * settings.llm_output_usd_per_mtok
+    ) / 1_000_000
+    usage = Usage(
+        llm_calls=stats.usage.calls,
+        input_tokens=stats.usage.input_tokens,
+        output_tokens=stats.usage.output_tokens,
+        estimated_cost_usd=round(cost, 6),
+    )
     meta = QAMeta(
         request_id=getattr(request.state, "request_id", None),
         latency_ms=stats.latency_ms,
@@ -89,10 +101,22 @@ async def answer_questions(
         unique_questions=stats.unique_questions,
         index_cache_hit=stats.index_cache_hit,
         answer_cache_hits=stats.answer_cache_hits,
-        usage=Usage(
-            llm_calls=stats.usage.calls,
-            input_tokens=stats.usage.input_tokens,
-            output_tokens=stats.usage.output_tokens,
-        ),
+        usage=usage,
     )
-    return QAResponse(results=[_to_result(result) for result in output.results], meta=meta)
+    results = [_to_result(result) for result in output.results]
+    logger.info(
+        "qa_completed",
+        extra={
+            "doc_type": document_type.value,
+            "doc_bytes": len(document_bytes),
+            "questions": stats.questions,
+            "unique_questions": stats.unique_questions,
+            "not_found": sum(1 for r in results if r.answer == NOT_FOUND_ANSWER),
+            "question_errors": sum(1 for r in results if r.error is not None),
+            "index_cache_hit": stats.index_cache_hit,
+            "answer_cache_hits": stats.answer_cache_hits,
+            "pipeline_latency_ms": stats.latency_ms,
+            **usage.model_dump(),
+        },
+    )
+    return QAResponse(results=results, meta=meta)
