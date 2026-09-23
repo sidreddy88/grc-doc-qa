@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>grc-doc-qa</title>
+  <style>
+    :root { --fg: #1d2330; --muted: #5f6b7a; --line: #dfe3e8; --accent: #2457c5; --bg: #f6f7f9; --warn: #9a5b00; --err: #b3261e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+    main { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    p.lede { margin: 0 0 24px; color: var(--muted); }
+    form { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 16px; }
+    label { display: grid; gap: 6px; font-weight: 600; }
+    label span { font-weight: 400; color: var(--muted); font-size: 13px; }
+    button { justify-self: start; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 9px 18px; font-size: 15px; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: progress; }
+    #status { margin: 20px 0 8px; color: var(--muted); min-height: 1.5em; }
+    #status.error { color: var(--err); }
+    .meta { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; margin-bottom: 12px; }
+    .question { font-weight: 600; white-space: pre-wrap; margin-bottom: 8px; }
+    .answer { white-space: pre-wrap; }
+    .answer.not-found { color: var(--warn); }
+    .answer.failed { color: var(--err); }
+    .items { margin: 10px 0 0; padding-left: 18px; }
+    details { margin-top: 10px; }
+    summary { cursor: pointer; color: var(--accent); font-size: 14px; }
+    blockquote { margin: 8px 0 0; padding: 6px 12px; border-left: 3px solid var(--line); color: #333; font-size: 14px; }
+    .where { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Compliance document Q&amp;A</h1>
+  <p class="lede">Upload a questions file and a SOC 2 report (PDF) or security knowledge base (JSON). Answers are grounded in the document, with citations.</p>
+
+  <form id="qa-form">
+    <label>Questions file
+      <span>JSON array of strings, e.g. ["Which cloud providers do you rely on?"]</span>
+      <input type="file" name="questions" accept=".json,application/json" required>
+    </label>
+    <label>Document
+      <span>PDF or JSON</span>
+      <input type="file" name="document" accept=".pdf,.json,application/pdf,application/json" required>
+    </label>
+    <button type="submit">Get answers</button>
+  </form>
+
+  <div id="status" role="status" aria-live="polite"></div>
+  <div id="meta" class="meta"></div>
+  <div id="results"></div>
+</main>
+
+<script>
+  const NOT_FOUND = "Not found in document";
+  const form = document.getElementById("qa-form");
+  const statusEl = document.getElementById("status");
+  const metaEl = document.getElementById("meta");
+  const resultsEl = document.getElementById("results");
+
+  function el(tag, props = {}, children = []) {
+    const node = Object.assign(document.createElement(tag), props);
+    for (const child of [].concat(children)) node.append(child);
+    return node;
+  }
+
+  function setStatus(text, isError = false) {
+    statusEl.textContent = text;
+    statusEl.className = isError ? "error" : "";
+  }
+
+  function citationList(citations) {
+    if (!citations || !citations.length) return [];
+    const details = el("details", {}, el("summary", { textContent: `${citations.length} citation${citations.length > 1 ? "s" : ""}` }));
+    for (const c of citations) {
+      const where = [c.page != null ? `Page ${c.page}` : null, c.source_id ? `Record ${c.source_id}` : null, c.section]
+        .filter(Boolean).join(" · ");
+      details.append(el("blockquote", {}, [el("span", { className: "where", textContent: where }), c.excerpt]));
+    }
+    return [details];
+  }
+
+  function renderResult(result) {
+    const answerClass = result.error ? "answer failed" : result.answer === NOT_FOUND ? "answer not-found" : "answer";
+    const card = el("div", { className: "card" }, [
+      el("div", { className: "question", textContent: result.question }),
+    ]);
+    if (result.items) {
+      const list = el("ul", { className: "items" });
+      for (const item of result.items) {
+        list.append(el("li", {}, [el("strong", { textContent: `${item.item}: ` }), item.answer, ...citationList(item.citations)]));
+      }
+      card.append(list);
+    } else {
+      card.append(el("div", { className: answerClass, textContent: result.answer }), ...citationList(result.citations));
+    }
+    return card;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = form.querySelector("button");
+    button.disabled = true;
+    resultsEl.replaceChildren();
+    metaEl.textContent = "";
+    setStatus("Reading the document and answering… the first request for a new document takes longer while it is indexed.");
+    try {
+      const response = await fetch("/qa", { method: "POST", body: new FormData(form) });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = body && body.error ? body.error.message : `Request failed (${response.status})`;
+        setStatus(message, true);
+        return;
+      }
+      const m = body.meta;
+      setStatus(`Answered ${body.results.length} question${body.results.length === 1 ? "" : "s"}.`);
+      if (m) {
+        metaEl.textContent = `${(m.latency_ms / 1000).toFixed(1)}s · ${m.usage.llm_calls} LLM calls · ` +
+          `${m.usage.input_tokens + m.usage.output_tokens} tokens (~$${m.usage.estimated_cost_usd.toFixed(4)}) · ` +
+          `index ${m.index_cache_hit ? "cached" : "built"} · ${m.answer_cache_hits} cached answers`;
+      }
+      resultsEl.replaceChildren(...body.results.map(renderResult));
+    } catch (error) {
+      setStatus(`Could not reach the server: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

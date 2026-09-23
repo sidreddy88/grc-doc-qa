@@ -165,3 +165,10 @@ class TestErrors:
         assert response.status_code == 500
         assert "secret" not in response.text
         assert response.json()["error"]["code"] == "internal_error"
+
+
+def test_ui_is_served_at_root_without_shadowing_the_api(client):
+    page = client.get("/")
+    assert page.status_code == 200 and "<form id=\"qa-form\">" in page.text
+    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/nope").json()["error"]["code"] == "not_found"

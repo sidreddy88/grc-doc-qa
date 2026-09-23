@@ -2,8 +2,10 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.qa import router as qa_router
 from app.core.config import Settings, get_settings
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Multipart framing and headers add a little on top of the two file limits.
 _MULTIPART_OVERHEAD_BYTES = 64 * 1024
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -50,6 +53,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    # Mounted last so API routes take precedence; serves the minimal UI at "/".
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="ui")
     return app
 
 
