@@ -9,8 +9,9 @@ Built with FastAPI, LangChain, FAISS, and `gpt-4o-mini`.
 - [How it works](#how-it-works)
 - [Configuration](#configuration)
 - [Testing](#testing)
-- [Design decisions and trade-offs](#design-decisions-and-trade-offs) (details in [NOTES.md](NOTES.md))
+- [Design decisions and trade-offs](#design-decisions-and-trade-offs)
 - [Limitations](#limitations)
+- [What I'd do next](#what-id-do-next)
 
 ## Quickstart
 
@@ -109,7 +110,7 @@ The required schema (`results[].question`, `answer`, `citations[].page`, `citati
 |----------------------------|-------------------------------------------------------------------------------|
 | `citations[].section`      | PDF has a table of contents; the section the excerpt comes from               |
 | `citations[].source_id`    | JSON documents: the id of the knowledge-base record (JSON has no pages)       |
-| `results[].items`          | "Which of the following…" questions: a verdict and citations for each option   |
+| `results[].items`          | "Which of the following…" questions: a verdict and citations for each option. If no option applies, `answer` and `citations` describe what the document does say instead of "Not found" |
 | `results[].error`          | That one question failed (e.g. LLM timeout); the rest of the request succeeds |
 | `meta`                     | Always: request id, latency, cache hits, LLM calls, tokens, estimated cost    |
 
@@ -150,7 +151,7 @@ flowchart TD
     F --> G{Answer cache hit?<br/>exact match, or cosine ≥ 0.97}
     G -- yes --> R
     G -- no --> H[Classify the question<br/>boolean · factual · explanatory · checklist]
-    H --> I[Hybrid retrieval<br/>FAISS + BM25 → fusion → cross-encoder → RRF]
+    H --> I[Hybrid retrieval<br/>FAISS + BM25 → fusion → cross-encoder → RRF<br/>plus per option or per question part]
     I --> J{Best chunk relevant enough?}
     J -- no --> NF[Not found in document]
     J -- yes --> K[gpt-4o-mini drafts the answer<br/>citing sources with verbatim quotes]
@@ -166,7 +167,8 @@ flowchart TD
 
 - **Indexing** happens once per document. Repeat uploads of the same file skip straight to answering.
 - **Classification** uses heuristics first. gpt-4o-mini is only asked when no rule matches, and none of the sample questions need it.
-- **Checklist questions** ("which of the following…") retrieve evidence for each option, and each option is answered and verified on its own.
+- **Checklist questions** ("which of the following…") retrieve evidence for each option, and each option is answered and verified on its own. If no option applies, the question is re-asked as an open question, so the answer can say what the document does describe instead of a bare "Not found".
+- **Multi-part questions** ("…? What are your SLAs?", "X, as well as Y") retrieve evidence for each part as well as the whole.
 - **The relevance gate** uses the cross-encoder's score. Questions the document clearly can't answer never reach the LLM.
 - **Citations** come from the document itself. The model cites sources by label, and page, section and excerpt are filled in from the indexed chunk, so the model can't invent a page number.
 
@@ -198,30 +200,58 @@ pip install -e ".[dev]"
 pytest
 ```
 
-The suite (~150 tests) runs offline in about 15 seconds, with no API key and no model downloads. The LLM is replaced by a scripted fake, and the embedding and reranking models by deterministic token-based stand-ins, wired in through the same dependency-injection points production uses. Tests cover:
+The suite (~160 tests) runs offline in about 15 seconds, with no API key and no model downloads. The LLM is replaced by a scripted fake, and the embedding and reranking models by deterministic token-based stand-ins, wired in through the same dependency-injection points production uses. Tests cover:
 
 - **Unit:** validation, PDF structure recovery, JSON shapes, chunking, fusion and ranking, both faithfulness layers, classifier rules, caches, logging, the LLM client's error mapping, and synthesis.
 - **Pipeline:** the full per-question flow, including a fabricated quote (rejected by Layer 1), a real quote attached to an overreaching claim (rejected by Layer 2), partial failures, and cache hits.
 - **Integration:** HTTP tests against the real Nave SOC 2 PDF and the knowledge-base JSON, plus every error path.
 
+### Evals
+
+```bash
+python -m evals.retrieval_eval             # retrieval quality on 38 labelled questions: free, no API key
+python -m evals.retrieval_eval --answers   # full answers with gpt-4o-mini (~$0.01 per run; needs OPENAI_API_KEY)
+```
+
+Tests check behaviour; the eval measures quality. [`evals/soc2_retrieval.json`](evals/soc2_retrieval.json) holds 38 questions over the sample SOC 2 report: the five spec samples, 25 more worded the way questionnaires ask, and 8 on topics the report never mentions (ISO 27001, RTO/RPO, GDPR, SAML...). Each answerable question is labelled with short verbatim evidence phrases rather than page numbers, so the labels survive chunking changes, and the five samples also have target answers with must-mention / must-not-mention checks. Current results (answer metrics over three runs):
+
+| Metric | Result |
+|---|---|
+| Evidence reaches the model (context recall) / MRR, 30 answerable | 0.867 / 0.708 |
+| Answerable questions wrongly stopped by the relevance gate | 0 |
+| Unanswerable questions stopped by the gate, before any LLM call | 5 / 8 |
+| Answerable questions answered, citing an evidence page | 24–26 / 30 |
+| Unanswerable questions answered "Not found" | 8 / 8 in every run |
+| Sample questions meeting their target answer | 3–4 / 5 (see Limitations) |
+
 ## Design decisions and trade-offs
 
-Short version below. [NOTES.md](NOTES.md) has the reasoning, the alternatives considered, and what I'd build next (including evals).
+The guiding principle: a fluent answer the document doesn't support is the worst possible output for a compliance product, worse than "Not found", because a reviewer is likely to trust it. Where coverage and grounding conflicted, I chose grounding, and made each check verifiable rather than relying on prompt wording.
 
-- **Grounding over coverage.** For a compliance product, a confident wrong answer is worse than "Not found". Every answer must survive two independent checks: quotes verified against the source text, then an LLM judge. That costs an extra LLM call per answered question, and I think that's the right trade here.
-- **Hybrid retrieval with reranking.** Questionnaires hinge on exact terms (vendor names, "AES-256", "CC6.1") that dense retrieval alone can miss, so BM25 runs alongside FAISS. A cross-encoder then reranks the fused candidates. Its absolute score also serves as the "is anything relevant?" gate.
-- **Local embeddings.** The service uses `gpt-4o-mini` only, so embeddings (`bge-small-en-v1.5`) and reranking (`ms-marco-MiniLM-L-6-v2`) run locally on CPU. The cost is a larger image (~2.5 GB, with CPU-only torch and the model weights baked in).
-- **Question routing.** Checklist questions ("which of the following…") are retrieved and answered per option. Heuristics route most questions without an LLM call.
-- **Avoiding redundant work.** Each document is parsed and embedded once, keyed by content hash. Duplicate questions are answered once. Near-identical questions on the same document are served from a semantic cache. Unanswerable questions never reach the LLM.
-- **Clear failure boundaries.** A missing or rejected API key fails the whole request (503). A transient LLM failure affects only that question (`results[].error`).
+- **Two-layer verification.** The model cites sources by label with a verbatim quote; page, section and record id come from chunk metadata, so it can't invent a page. Layer 1 (deterministic, free) checks each quote appears in the chunk it cites, with a fuzzy match for small copying slips; the excerpt returned is the document's text, not the model's copy. Layer 2 (one gpt-4o-mini call) asks a judge whether the claims are supported by those excerpts. Layer 1 catches invented quotes; Layer 2 catches a real quote attached to a claim it doesn't support ("GCP hosts the service" quoted, "with 99.99% uptime" added). A rejection is final. On borderline answers the judge's verdict varies between identical runs, so two ways of softening that were tried and dropped: re-drafting a rejected answer with the judge's reason turned two correct "Not found"s into answers opening "No, the sources do not explicitly confirm…" (which reads as "not compliant"), and asking the judge a second time made no measurable difference over 12 runs, partly because some rejections are right.
+- **Hybrid retrieval with fused ranking.** Questionnaires hinge on exact terms (vendor names, "AES-256", "CC6.1") that dense retrieval blurs, so BM25 runs alongside FAISS (20 candidates each, fused 0.7/0.3). A cross-encoder reranks them, and the final order is the reciprocal-rank fusion of both orders: the reranker is trained on short web queries and, on long questionnaire items, sometimes buried chunks both retrievers agreed on (the p.17 vendor table for the personal-information question). Using the cross-encoder only as a gate looked better on one question's ranking, but cost the cloud-provider answer its key context, so the fusion stays.
+- **A relevance gate.** The cross-encoder's absolute score is the best "is anything relevant?" signal: unrelated probes scored below 1e-4 and answerable questions above 2e-3, so below `MIN_RELEVANCE = 5e-4` a question gets "Not found" with no LLM call. Near-misses (the report discusses the area without answering) pass the gate and the model answers "Not found" itself.
+- **Local embeddings and reranker.** The service is restricted to `gpt-4o-mini`, so `bge-small-en-v1.5` and `ms-marco-MiniLM-L-6-v2` run locally on CPU: no embedding cost or rate limits, at the price of a ~2.5 GB image and first-time indexing. One trap: the cross-encoder returned NaN for every input, traced to misaligned tensors in the safetensors checkpoint; `app/services/model_utils.py` realigns them after loading.
+- **Question routing.** Heuristics classify questions (boolean, factual, explanatory, checklist) without an LLM call; all 38 eval questions, including the five samples, need none. The type sets the answer format and retrieval depth (5 chunks, 8 for explanatory). Checklist questions retrieve and verify each option separately, so one fabricated option is dropped without discarding the others; if no option applies, the question is re-asked as an open question, so "which of APM, EUM, DEM?" gets "none is named; Nave uses GCP-provided monitoring" instead of a bare "Not found". Multi-part questions ("…, as well as the backup locations") retrieve for each part too.
+- **Structure from the real files.** Sections come from the PDF's table of contents (its page numbers are off by one, so titles are located in the body text), the running header is stripped, and the cover page is kept because it holds the audit period. JSON knowledge-base records are the retrieval units, cited by record id. Structured output uses strict JSON schema, and document text is treated as untrusted (wrapped in `<sources>` tags; Layer 1 means injected text can't be cited as something the document doesn't say).
+- **Avoiding redundant work.** Each document is parsed and embedded once, keyed by content hash. Duplicate questions are answered once, and near-identical ones (cosine ≥ 0.97) on the same document come from a semantic cache. Answers and "Not found" results are cached for an hour, errors never, so a re-run questionnaire gets consistent answers.
+- **Clear failure boundaries.** Questions run concurrently (5 at a time), with CPU-bound work in threads. A missing or rejected API key fails the whole request (503). A transient LLM failure affects only that question (`results[].error`); if every question fails, the request returns 502.
 
 ## Limitations
 
-- No OCR. Scanned PDFs are rejected with a clear error, and text inside images (this sample's architecture diagram and org chart) isn't read. For the sample report that doesn't matter, because the same facts appear in the prose.
-- The first request for a new document pays for indexing: about 10 s for the 84-page sample running natively on an Apple Silicon Mac, and about 50 s inside Docker on the same machine (the Linux ARM torch build lacks Apple's Accelerate kernels). Repeat requests hit the cache. Large documents on slow hosts may need a higher `REQUEST_TIMEOUT_S`.
-- Caches and indexes live in process memory, so one uvicorn worker per container. Horizontal scaling would move them to Redis or a vector store.
-- Table structure is flattened to text. Cells stay contiguous, which works well for SOC 2 test matrices, but column relationships aren't modeled.
-- The retrieval gate and cache thresholds were calibrated on the sample documents, not on an eval set. See NOTES.md.
+- **Two sample questions have known gaps.** The incident-notification answer is partial and misses the report's closest statement (p.21: "Nave will inform all necessary parties of the incident without undue delay"): the question says "notifying a client", the report says "inform… parties", and neither a larger embedding model, HyDE nor parent-document retrieval brought that chunk into context. It is also "Not found" in roughly a third of runs: some judge rejections are misreadings, and some are correct, because it cites a risk-management excerpt as evidence for "defined incident-response roles" (see the next point). The personal-information answer is hedged ("may involve…") and is "Not found" in about half of runs: its "Yes" is inferred from the vendor list, and the judge correctly rejects that. The report does say it on p.16 ("Data is persisted in GCP Storage"), but that chunk isn't in the question's top 20.
+- **Test-matrix tables are chunked as text.** Fixed-size chunks can cut SOC 2 test-matrix rows in half or mix unrelated controls, which is why the incident-notification answer sometimes cites the wrong row. Table-aware chunking (cells rebuilt from PDF word positions, one chunk per control) is on the [`experiment/table-aware-chunking`](https://github.com/sidreddy88/grc-doc-qa/tree/experiment/table-aware-chunking) branch: on the eval it raised context recall from 0.867 to 0.967, but met fewer sample targets (0–1 of 5) until retrieval is re-tuned for it, so it isn't merged.
+- **No OCR.** Scanned PDFs are rejected with a clear error, and text inside images isn't read. For the sample report that doesn't matter: the p.15 architecture diagram was checked by hand, and its facts (GCP components, no region) also appear in the prose.
+- **First request per document pays for indexing:** about 10 s for the 84-page sample natively on an Apple Silicon Mac, about 50 s in Docker on the same machine (the Linux ARM torch build lacks Apple's Accelerate kernels). Large documents on slow hosts may need a higher `REQUEST_TIMEOUT_S`.
+- **In-memory caches and indexes**, so one uvicorn worker per container.
+- **Thresholds come from one document.** The gate and cache thresholds were set on the sample report, and the eval covers only it.
+
+## What I'd do next
+
+- **Grow the eval** to 60–100 questions, including the JSON knowledge base, with content checks for every question, and score the runtime judge against a stronger offline one. Then run it in CI: retrieval metrics on every push, answer metrics on prompt or model changes.
+- **Finish table-aware chunking** on its branch: re-tune retrieval depth and the gate for it with the eval, and store rows as structured fields so "were there exceptions for CC6.1?" becomes a lookup.
+- **Read diagrams:** describe each figure once at index time with gpt-4o-mini's vision input, stored as a figure chunk with its page and verified separately, since the verbatim-quote check can't apply to a model-written description.
+- **Persist indexes and caches** (pgvector, Redis) so they survive restarts and scale across workers, and add a `/metrics` endpoint for latency, LLM calls and cache hit rates.
 
 ## Project structure
 
@@ -234,4 +264,5 @@ app/
   deps.py       dependency wiring
 static/         minimal UI
 tests/          unit/, integration/, fakes.py (model and LLM doubles), fixtures/
+evals/          labelled questions and the retrieval/answer eval (python -m evals.retrieval_eval)
 ```

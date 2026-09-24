@@ -41,6 +41,6 @@ include = ["app*"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = [
-    # FAISS still ships only in langchain-community; see NOTES.md.
+    # FAISS still ships only in langchain-community (the langchain-faiss package on PyPI is unofficial and empty).
     "ignore:`langchain-community` is being sunset:DeprecationWarning",
 ]
