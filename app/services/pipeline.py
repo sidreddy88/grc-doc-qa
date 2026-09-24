@@ -21,10 +21,9 @@ from app.services.faithfulness import Claim, FaithfulnessJudge, VerifiedCitation
 from app.services.indexing import DocumentIndex, IndexService
 from app.services.llm import TokenUsage
 from app.services.qa_chain import AnswerSynthesizer, Draft
-from app.services.query_classifier import QueryClassifier
+from app.services.query_classifier import QueryClassifier, split_question_parts
 from app.services.retrieval import HybridRetriever, RetrievedChunk
 from app.services.semantic_cache import CacheHit, SemanticAnswerCache
-
 logger = logging.getLogger(__name__)
 
 _UNAVAILABLE_ANSWER = "Unable to answer this question right now: the language model is unavailable. Please retry."
@@ -182,34 +181,61 @@ class QAPipeline:
             trace.outcome = "not_found_retrieval"
             return AnswerResult(question=question, answer=NOT_FOUND_ANSWER)
 
-        draft = await self._synthesizer.synthesize(
-            question, classification.question_type, classification.items, [hit.chunk for hit in hits]
-        )
+        contexts = [hit.chunk for hit in hits]
+        draft = await self._synthesizer.synthesize(question, classification.question_type, classification.items, contexts)
         trace.usage.add(draft.usage)
-        if classification.question_type is QuestionType.CHECKLIST:
-            return await self._ground_checklist(question, draft, trace)
-        return await self._ground_answer(question, draft, trace)
+        if classification.question_type is not QuestionType.CHECKLIST:
+            return await self._ground_answer(question, draft, trace)
+
+        result = await self._ground_checklist(question, draft, trace)
+        if result.answer != NOT_FOUND_ANSWER:
+            return result
+        # No option applies. The document may still describe related practice ("none of these, but it monitors
+        # uptime and error counts"), which a per-option answer has no place for. Ask again as an open question;
+        # the answer passes the same two layers as any other.
+        fallback = await self._synthesizer.synthesize(question, QuestionType.EXPLANATORY, [], contexts)
+        trace.usage.add(fallback.usage)
+        answer = await self._ground_answer(question, fallback, trace)
+        if answer.answer == NOT_FOUND_ANSWER:
+            return result
+        trace.outcome = "answered_open_fallback"
+        return replace(answer, items=result.items)
 
     async def _retrieve(
         self, index: DocumentIndex, question: str, vector: np.ndarray, question_type: QuestionType, items: list[str]
     ) -> list[RetrievedChunk]:
-        if question_type is not QuestionType.CHECKLIST:
-            k = self._settings.top_k_explanatory if question_type is QuestionType.EXPLANATORY else self._settings.top_k_default
-            return await asyncio.to_thread(self._retriever.retrieve, index, question, vector, k)
-
-        # Retrieve for the question as a whole and for each option, so evidence for every option is in context.
-        stem = question.splitlines()[0]
-        item_queries = [f"{stem} {item}" for item in items]
-        item_vectors = await asyncio.to_thread(self._embeddings.encode_queries, item_queries)
-        batches = [await asyncio.to_thread(self._retriever.retrieve, index, question, vector, self._settings.top_k_default)]
-        for query, item_vector in zip(item_queries, item_vectors, strict=True):
-            batches.append(
-                await asyncio.to_thread(
-                    self._retriever.retrieve, index, query, item_vector, self._settings.top_k_checklist_item
-                )
+        if question_type is QuestionType.CHECKLIST:
+            # Retrieve for each option too, so evidence for every option is in context.
+            stem = question.splitlines()[0]
+            return await self._retrieve_with_sub_queries(
+                index, question, vector, self._settings.top_k_default,
+                [f"{stem} {item}" for item in items], self._settings.top_k_checklist_item,
             )
+
+        k = self._settings.top_k_explanatory if question_type is QuestionType.EXPLANATORY else self._settings.top_k_default
+        parts = split_question_parts(question)
+        if not parts:
+            return await asyncio.to_thread(self._retriever.retrieve, index, question, vector, k)
+        return await self._retrieve_with_sub_queries(
+            index, question, vector, k, parts, self._settings.top_k_question_part
+        )
+
+    async def _retrieve_with_sub_queries(
+        self,
+        index: DocumentIndex,
+        question: str,
+        vector: np.ndarray,
+        k: int,
+        sub_queries: list[str],
+        sub_k: int,
+    ) -> list[RetrievedChunk]:
+        """Retrieve for the whole question and for each sub-query, then interleave the hits."""
+        sub_vectors = await asyncio.to_thread(self._embeddings.encode_queries, sub_queries)
+        batches = [await asyncio.to_thread(self._retriever.retrieve, index, question, vector, k)]
+        for query, sub_vector in zip(sub_queries, sub_vectors, strict=True):
+            batches.append(await asyncio.to_thread(self._retriever.retrieve, index, query, sub_vector, sub_k))
         merged: dict[int, RetrievedChunk] = {}
-        for rank in range(max(len(batch) for batch in batches)):  # interleave so every option keeps its best hits
+        for rank in range(max(len(batch) for batch in batches)):  # interleave so every sub-query keeps its best hits
             for batch in batches:
                 if rank < len(batch) and batch[rank].chunk.chunk_id not in merged:
                     merged[batch[rank].chunk.chunk_id] = batch[rank]

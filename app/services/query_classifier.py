@@ -36,10 +36,13 @@ _BOOLEAN_START = re.compile(
     r"^(is|are|do|does|did|has|have|had|was|were|can|could|will|would|should|shall|must|may)\b", re.I
 )
 _FACTUAL_START = re.compile(
-    r"^(which|what|where|who|whom|when|how (many|much|often|long)|list|name|specify|identify|"
+    r"^(which|what|where|who|whom|when|how (many|much|often|long|frequently|quickly|soon)|list|name|specify|identify|"
     r"please (specify|list|name|identify|provide|state))\b",
     re.I,
 )
+_PART_BOUNDARY = re.compile(r"(?<=\?)\s+|,?\s+as well as\s+", re.I)
+_FOLLOW_UP = re.compile(r"^(if (yes|so|not|no|applicable)|please (describe|explain|elaborate))\b", re.I)
+_MIN_PART_WORDS = 2  # a lone word ("employees as well as contractors") is too little to search on
 _INLINE_OPTIONS = re.compile(r"[?:]\s*(?P<options>[^?:]+?)\s*$")
 _LEADING_CONJUNCTION = re.compile(r"^(?:or|and)\s+", re.I)
 _BULLET = re.compile(r"^\s*(?:[-*•●▪]|\(?[a-z0-9]{1,2}[.)])\s+(?P<item>.+?)\s*$", re.I)
@@ -65,6 +68,21 @@ def extract_checklist_items(question: str) -> list[str]:
     items = [_LEADING_CONJUNCTION.sub("", part) for part in parts]
     items = [item for item in items if item]
     return items if len(items) >= 2 else []
+
+
+def split_question_parts(question: str) -> list[str]:
+    """Split a multi-part question ("...? What are your SLAs?", "...X, as well as Y") into separately
+    searchable parts. Returns [] for single-part questions.
+
+    Each part gets its own retrieval pass: evidence for a secondary ask (e.g. backup locations) is
+    otherwise outranked by chunks matching the dominant one.
+    """
+    parts = [part.strip() for part in _PART_BOUNDARY.split(question.strip())]
+    parts = [
+        part for part in parts
+        if len(part.split()) >= _MIN_PART_WORDS and not _FOLLOW_UP.match(part)
+    ]
+    return parts if len(parts) >= 2 else []
 
 
 def classify_heuristically(question: str) -> Classification | None:

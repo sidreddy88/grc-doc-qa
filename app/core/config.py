@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     top_k_default: int = Field(default=5, gt=0)
     top_k_explanatory: int = Field(default=8, gt=0)
     top_k_checklist_item: int = Field(default=3, gt=0)
+    # Extra chunks retrieved per part of a multi-part question ("...? What are your SLAs?", "X, as well as Y").
+    top_k_question_part: int = Field(default=3, gt=0)
     max_context_chunks: int = Field(default=12, gt=0)
     # Below this cross-encoder probability for the best chunk, skip the LLM and answer "Not found".
     # Calibrated on the sample SOC 2 report: unanswerable questions scored < 1e-4, answerable ones > 2e-3.

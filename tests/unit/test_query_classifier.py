@@ -10,6 +10,7 @@ from app.services.query_classifier import (
     QueryClassifier,
     classify_heuristically,
     extract_checklist_items,
+    split_question_parts,
 )
 from tests.fakes import ScriptedLLM
 
@@ -34,6 +35,8 @@ def test_spec_sample_questions_are_all_classified_without_an_llm_call():
         ("Does the Hypervisor lock accounts after 3-5 invalid login attempts?", QuestionType.BOOLEAN),
         ("Where are your data centres located?", QuestionType.FACTUAL),
         ("How many employees have production access?", QuestionType.FACTUAL),
+        ("How frequently is the production environment scanned?", QuestionType.FACTUAL),
+        ("How quickly is access revoked after termination?", QuestionType.FACTUAL),
         ("How do you manage encryption keys?", QuestionType.EXPLANATORY),
         ("Do you have an incident response plan? If so, describe it.", QuestionType.EXPLANATORY),
     ],
@@ -63,6 +66,28 @@ def test_unmatched_phrasing_returns_none():
 )
 def test_extract_checklist_items(question, items):
     assert extract_checklist_items(question) == items
+
+
+@pytest.mark.parametrize(
+    ("question", "parts"),
+    [
+        (SAMPLE_QUESTIONS[0], [
+            "Do you have formally defined criteria for notifying a client during an incident that might impact "
+            "the security of their data or systems?",
+            "What are your SLAs for notification?",
+        ]),
+        (SAMPLE_QUESTIONS[3], [
+            "Please specify the primary data center location/region of the underlying cloud infrastructure "
+            "used to host the service(s)",
+            "the backup location(s).",
+        ]),
+        (SAMPLE_QUESTIONS[1], []),  # "If yes, describe." is a follow-up, not a separate ask
+        ("Which cloud providers do you rely on?", []),
+        ("Is training required for employees as well as contractors?", []),  # one-word part is dropped
+    ],
+)
+def test_split_question_parts(question, parts):
+    assert split_question_parts(question) == parts
 
 
 def test_checklist_cue_without_items_is_not_a_checklist():

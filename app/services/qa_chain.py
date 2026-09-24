@@ -31,10 +31,11 @@ provided, which are excerpts from a single document (for example a SOC 2 report 
 
 Rules:
 - Use only facts stated in the sources. Never use outside knowledge or assumptions about typical practice.
-- If the sources do not answer the question, set supported=false, answer exactly "{NOT_FOUND_ANSWER}", \
-and return no citations.
-- If the sources answer only part of the question, answer that part and say plainly which parts the document \
-does not address.
+- If the sources address the question only partly or indirectly (for example, they describe how data is \
+replicated but name no region), set supported=true: state what the sources do say, and say plainly which parts \
+the document does not address. A questionnaire reviewer needs the partial evidence.
+- Only if the sources contain nothing relevant to any part of the question, set supported=false, answer exactly \
+"{NOT_FOUND_ANSWER}", and return no citations.
 - Every factual statement must be backed by a citation. Each citation gives the source label and a short quote \
 (one sentence or phrase, under 300 characters) copied character-for-character from that source.
 - Attribute facts correctly: distinguish what the organization itself does from what a subservice \

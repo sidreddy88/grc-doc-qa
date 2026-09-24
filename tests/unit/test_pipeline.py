@@ -99,6 +99,48 @@ async def test_checklist_reports_each_option_and_rejects_unsupported_ones():
     assert result.answer.splitlines()[0] == "Application Performance Monitoring (APM): Yes, APM alerts on latency."
 
 
+async def test_each_part_of_a_multi_part_question_gets_its_own_evidence():
+    llm = ScriptedLLM({"_SynthesisOutput": [grounded_synthesis()], "_JudgeOutput": [approve_all]})
+    settings = Settings(_env_file=None, retrieval_candidates=3, rerank_candidates=3,
+                        top_k_default=1, top_k_explanatory=1, top_k_question_part=1)
+    question = "Which cloud provider hosts the service, as well as how data is encrypted at rest?"
+    await make_test_pipeline(settings, llm).answer([question], DOCUMENT, DocumentType.JSON)
+    sources = parse_sources(llm.calls_for("_SynthesisOutput")[0]).values()
+    # With k=1 a single retrieval pass would surface only one of these records.
+    assert any("Google Cloud Platform" in text for text in sources)
+    assert any("AES-256" in text for text in sources)
+
+
+_NO_OPTION = {"supported": False, "answer": NOT_FOUND_ANSWER, "citations": [], "items": [
+    {"item": "End User Monitoring (EUM)", "supported": False, "answer": NOT_FOUND_ANSWER, "citations": []},
+    {"item": "Digital Experience Monitoring (DEM)", "supported": False, "answer": NOT_FOUND_ANSWER, "citations": []},
+]}
+_MONITORING = ("Which of the following, if any, are performed as part of your monitoring process for the service?\n"
+               "- End User Monitoring (EUM)\n- Digital Experience Monitoring (DEM)")
+
+
+async def test_checklist_with_no_matching_option_is_asked_again_as_an_open_question():
+    summary = "Neither is named; application performance monitoring alerts on latency and error rates."
+    llm = ScriptedLLM({"_SynthesisOutput": [_NO_OPTION, grounded_synthesis(summary)], "_JudgeOutput": [approve_all]})
+    [result] = (await run(make_pipeline(llm), _MONITORING)).results
+    assert result.answer == summary
+    assert result.citations
+    assert [(i.item, i.supported) for i in result.items] == [
+        ("End User Monitoring (EUM)", False),
+        ("Digital Experience Monitoring (DEM)", False),
+    ]
+    assert "Question type: explanatory" in llm.calls_for("_SynthesisOutput")[1]
+
+
+async def test_checklist_fallback_that_finds_nothing_stays_not_found():
+    not_found = {"supported": False, "answer": NOT_FOUND_ANSWER, "citations": [], "items": []}
+    llm = ScriptedLLM({"_SynthesisOutput": [_NO_OPTION, not_found]})
+    [result] = (await run(make_pipeline(llm), _MONITORING)).results
+    assert result.answer == NOT_FOUND_ANSWER
+    assert [i.supported for i in result.items] == [False, False]
+    assert llm.calls_for("_JudgeOutput") == []
+
+
 async def test_duplicate_questions_are_answered_once_and_returned_in_order():
     llm = ScriptedLLM({"_SynthesisOutput": [grounded_synthesis()], "_JudgeOutput": [approve_all]})
     q = "Is data encrypted at rest?"
