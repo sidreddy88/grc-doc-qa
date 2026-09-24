@@ -1,0 +1,399 @@
+{
+ "document": "tests/fixtures/nave_soc2.pdf",
+ "notes": "Retrieval labels for the sample SOC 2 report. 'evidence' lists short verbatim phrases from the report; a retrieved chunk counts as evidence if it contains any of them (case- and quote-insensitive). Questions are worded the way questionnaires ask, not copied from the report. 'answerable: false' questions cover topics the report never mentions. The five spec sample questions also carry a 'target' answer and automatic checks: every 'must_mention' group needs at least one of its phrases in the answer, and no 'must_not_mention' phrase may appear (case-insensitive).",
+ "questions": [
+  {
+   "id": "spec-1",
+   "answerable": true,
+   "question": "Do you have formally defined criteria for notifying a client during an incident that might impact the security of their data or systems? What are your SLAs for notification?",
+   "evidence": [
+    "inform all necessary parties of the incident without undue delay",
+    "Breach Notification Policy"
+   ],
+   "target": "No formal client-notification criteria or notification SLA are stated. The incident management procedures (5.12, p.21) say Nave will inform all necessary parties of an incident without undue delay, and a Breach Notification Policy exists (5.7, p.20).",
+   "must_mention": [
+    [
+     "not specif",
+     "not state",
+     "not detail",
+     "not provide",
+     "not mention",
+     "not include",
+     "not explicitly",
+     "no specific"
+    ],
+    [
+     "undue delay",
+     "inform all necessary parties",
+     "Breach Notification Policy"
+    ]
+   ],
+   "must_not_mention": [
+    "24 hours",
+    "72 hours",
+    "48 hours"
+   ]
+  },
+  {
+   "id": "spec-2",
+   "answerable": true,
+   "question": "Is personal information transmitted, processed, stored, or disclosed to or retained by third parties? If yes, describe.",
+   "evidence": [
+    "Third-Party Summary",
+    "Agreements with vendors and service providers involved in accessing"
+   ],
+   "target": "Yes: customer data is hosted with GCP, a subservice organization, and the report lists other third parties (Drata, Trello, Snyk, ...). Agreements with vendors that access, process or store information are reviewed before execution (p.40).",
+   "must_mention": [
+    [
+     "GCP",
+     "Google Cloud"
+    ],
+    [
+     "vendor",
+     "third part",
+     "agreement"
+    ]
+   ],
+   "must_not_mention": []
+  },
+  {
+   "id": "spec-3",
+   "answerable": true,
+   "question": "Which cloud providers do you rely on?",
+   "evidence": [
+    "GCP Cloud hosting provider",
+    "uses a subservice organization for cloud hosting services"
+   ],
+   "target": "GCP (Google Cloud Platform) is the cloud hosting provider (p.17; a subservice organization for cloud hosting, p.9).",
+   "must_mention": [
+    [
+     "GCP",
+     "Google Cloud Platform"
+    ]
+   ],
+   "must_not_mention": [
+    "Bitbucket",
+    "Trello",
+    "Snyk",
+    "Drata",
+    "Jenkins",
+    "Skype",
+    "file storage"
+   ]
+  },
+  {
+   "id": "spec-4",
+   "answerable": true,
+   "question": "Please specify the primary data center location/region of the underlying cloud infrastructure used to host the service(s), as well as the backup location(s).",
+   "evidence": [
+    "multiple availability zones to replicate production data",
+    "multi-availability zone deployment"
+   ],
+   "target": "No primary or backup region is named. Production data is hosted on GCP and replicated across multiple availability zones (p.81; multi-availability zone deployment, p.22); backups run at least daily.",
+   "must_mention": [
+    [
+     "not specif",
+     "not state",
+     "not detail",
+     "not provide",
+     "not mention",
+     "not include",
+     "not explicitly",
+     "no specific"
+    ],
+    [
+     "GCP",
+     "Google Cloud"
+    ],
+    [
+     "availability zone"
+    ]
+   ],
+   "must_not_mention": [
+    "US Central",
+    "us-central",
+    "United States"
+   ]
+  },
+  {
+   "id": "spec-5",
+   "answerable": true,
+   "question": "Which of the following, if any, are performed as part of your monitoring process for the service?\n- Application Performance Monitoring (APM)\n- End User Monitoring (EUM)\n- Digital Experience Monitoring (DEM)",
+   "evidence": [
+    "Services Uptime check"
+   ],
+   "target": "None of APM, EUM or DEM is named. The report describes GCP-provided monitoring of network and systems: CPU and memory alerts, application error counts, disk space, SSL certificate expiry and service uptime checks (5.11, p.21).",
+   "must_mention": [
+    [
+     "uptime",
+     "error count",
+     "CPU",
+     "monitoring features",
+     "GCP-provided"
+    ]
+   ],
+   "must_not_mention": [
+    "End User Monitoring (EUM): Yes",
+    "Digital Experience Monitoring (DEM): Yes"
+   ]
+  },
+  {
+   "id": "mfa",
+   "answerable": true,
+   "question": "Is multi-factor authentication required to access production systems?",
+   "evidence": [
+    "requires the use of multi-factor authentication",
+    "MFA controlled access"
+   ]
+  },
+  {
+   "id": "access-review",
+   "answerable": true,
+   "question": "How often are user access rights reviewed?",
+   "evidence": [
+    "user access reviews periodically"
+   ]
+  },
+  {
+   "id": "background-checks",
+   "answerable": true,
+   "question": "Do you perform background screening on new hires?",
+   "evidence": [
+    "Background checks for new employees",
+    "Performing background checks on employees"
+   ]
+  },
+  {
+   "id": "training",
+   "answerable": true,
+   "question": "Is security awareness training provided to staff, and how often?",
+   "evidence": [
+    "Annual employee security training",
+    "during onboarding and annually thereafter"
+   ]
+  },
+  {
+   "id": "vuln-scans",
+   "answerable": true,
+   "question": "How frequently is the production environment scanned for vulnerabilities?",
+   "evidence": [
+    "vulnerability scans of the production environment at least quarterly"
+   ]
+  },
+  {
+   "id": "pentest",
+   "answerable": true,
+   "question": "Do you engage an independent firm to perform penetration testing, and how often?",
+   "evidence": [
+    "penetration tests of the production environment at least annually",
+    "annual penetration tests"
+   ]
+  },
+  {
+   "id": "change-review",
+   "answerable": true,
+   "question": "Are code changes peer reviewed and approved before they are deployed to production?",
+   "evidence": [
+    "peer-reviewed and approved prior to deployment",
+    "requiring a merge request and approval"
+   ]
+  },
+  {
+   "id": "offboarding",
+   "answerable": true,
+   "question": "How quickly is access revoked when an employee leaves or changes role?",
+   "evidence": [
+    "within 24 hours of notification"
+   ]
+  },
+  {
+   "id": "encryption-transit",
+   "answerable": true,
+   "question": "Is data encrypted in transit, and with which protocol?",
+   "evidence": [
+    "Data in transit is encrypted using strong cryptographic algorithms",
+    "Transport Layer Security"
+   ]
+  },
+  {
+   "id": "encryption-rest",
+   "answerable": true,
+   "question": "What encryption standard protects stored customer data?",
+   "evidence": [
+    "256 encrypted disks",
+    "Data at rest is encrypted using strong cryptographic algorithms"
+   ]
+  },
+  {
+   "id": "waf",
+   "answerable": true,
+   "question": "Do you use a web application firewall in front of public-facing applications?",
+   "evidence": [
+    "web application firewall is in place"
+   ]
+  },
+  {
+   "id": "key-management",
+   "answerable": true,
+   "question": "How are cryptographic keys managed?",
+   "evidence": [
+    "established key management process"
+   ]
+  },
+  {
+   "id": "asset-inventory",
+   "answerable": true,
+   "question": "Do you maintain an inventory of information assets with owners?",
+   "evidence": [
+    "centralized asset register is maintained"
+   ]
+  },
+  {
+   "id": "audit-period",
+   "answerable": true,
+   "question": "What period does this SOC 2 examination cover?",
+   "evidence": [
+    "August 1, 2024 to October 31, 2024"
+   ]
+  },
+  {
+   "id": "auditor",
+   "answerable": true,
+   "question": "Which audit firm performed the SOC 2 examination?",
+   "evidence": [
+    "Prescient Assurance LLC"
+   ]
+  },
+  {
+   "id": "bcdr",
+   "answerable": true,
+   "question": "Do you have a business continuity and disaster recovery plan?",
+   "evidence": [
+    "Maintain business continuity and disaster recovery programs",
+    "BCDR Plan",
+    "Business Continuity Policy"
+   ]
+  },
+  {
+   "id": "incidents-in-period",
+   "answerable": true,
+   "question": "Were there any security incidents during the audit period?",
+   "evidence": [
+    "No security incidents have occurred during the audit period"
+   ]
+  },
+  {
+   "id": "ids",
+   "answerable": true,
+   "question": "Is intrusion detection or prevention in place for the network?",
+   "evidence": [
+    "intrusion detection system (IDS)"
+   ]
+  },
+  {
+   "id": "code-of-conduct",
+   "answerable": true,
+   "question": "Do employees sign a code of conduct or confidentiality agreement?",
+   "evidence": [
+    "Code of Conduct, which is read and signed by all employees",
+    "non-disclosure or confidentiality agreement"
+   ]
+  },
+  {
+   "id": "risk-assessment",
+   "answerable": true,
+   "question": "Is a formal risk assessment performed at least once a year?",
+   "evidence": [
+    "conducts a Risk Assessment at least annually"
+   ]
+  },
+  {
+   "id": "backup-frequency",
+   "answerable": true,
+   "question": "How often are backups of production data taken?",
+   "evidence": [
+    "performed least daily"
+   ]
+  },
+  {
+   "id": "customer-reporting",
+   "answerable": true,
+   "question": "Can customers report security issues or vulnerabilities to you, and how?",
+   "evidence": [
+    "communication feature or support portal to customers to report"
+   ]
+  },
+  {
+   "id": "central-logging",
+   "answerable": true,
+   "question": "Are system logs centrally collected and searchable?",
+   "evidence": [
+    "collects and stores server logs in a central location"
+   ]
+  },
+  {
+   "id": "physical-security",
+   "answerable": true,
+   "question": "Who is responsible for physical security of the data centers hosting the service?",
+   "evidence": [
+    "GCP is responsible for restricting data center access"
+   ]
+  },
+  {
+   "id": "data-classification",
+   "answerable": true,
+   "question": "How do you classify the data you handle?",
+   "evidence": [
+    "three classifications for the data"
+   ]
+  },
+  {
+   "id": "no-iso27001",
+   "answerable": false,
+   "question": "Are you certified to ISO 27001?",
+   "evidence": []
+  },
+  {
+   "id": "no-rto-rpo",
+   "answerable": false,
+   "question": "What are your RTO and RPO targets?",
+   "evidence": []
+  },
+  {
+   "id": "no-byok",
+   "answerable": false,
+   "question": "Do you support customer-managed encryption keys (BYOK)?",
+   "evidence": []
+  },
+  {
+   "id": "no-insurance",
+   "answerable": false,
+   "question": "What is your cyber insurance coverage limit?",
+   "evidence": []
+  },
+  {
+   "id": "no-gdpr",
+   "answerable": false,
+   "question": "Are you GDPR compliant, and do you sign data processing agreements?",
+   "evidence": []
+  },
+  {
+   "id": "no-eu-residency",
+   "answerable": false,
+   "question": "Can customer data be kept in an EU region for data residency?",
+   "evidence": []
+  },
+  {
+   "id": "no-saml",
+   "answerable": false,
+   "question": "Do you support SAML single sign-on for your customers' users?",
+   "evidence": []
+  },
+  {
+   "id": "no-uptime-sla",
+   "answerable": false,
+   "question": "What is your contractual uptime SLA percentage for the service?",
+   "evidence": []
+  }
+ ]
+}
