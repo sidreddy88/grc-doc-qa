@@ -1,7 +1,7 @@
 import io
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pypdf import PdfReader
@@ -9,8 +9,9 @@ from pypdf.errors import PdfReadError
 
 from app.core.config import Settings
 from app.core.exceptions import DocumentParseError, DocumentTooLongError, EmptyDocumentError
-from app.models import DocumentType
-from app.services import pdf_structure
+from app.models import DocumentType, Segment
+from app.services import control_matrix, pdf_structure
+from app.services.control_matrix import MatrixRow
 from app.services.text import normalize_whitespace
 
 logger = logging.getLogger(__name__)
@@ -23,18 +24,11 @@ _ID_KEYS = ("id", "_id", "uuid", "question_id", "row_id")
 
 
 @dataclass(frozen=True, slots=True)
-class Segment:
-    text: str
-    page: int | None = None
-    source_id: str | None = None
-    section: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class LoadedDocument:
     doc_type: DocumentType
     segments: list[Segment]
     unit_count: int
+    matrix_rows: list[MatrixRow] = field(default_factory=list)  # SOC 2 control test matrix, one row per control
 
 
 def load_document(data: bytes, doc_type: DocumentType, settings: Settings) -> LoadedDocument:
@@ -60,8 +54,10 @@ def _load_pdf(data: bytes, settings: Settings) -> LoadedDocument:
     if page_count > settings.max_pdf_pages:
         raise DocumentTooLongError(f"The PDF has {page_count} pages; the limit is {settings.max_pdf_pages}.")
 
+    # Word positions are collected in the same extraction pass; only the control-matrix parser uses them.
+    words_by_page: list[list[control_matrix.Word]] = [[] for _ in reader.pages]
     try:
-        raw_texts = [page.extract_text() or "" for page in reader.pages]
+        raw_texts = [page.extract_text(visitor_text=_word_collector(words_by_page[i])) or "" for i, page in enumerate(reader.pages)]
     except Exception as error:  # pypdf raises a wide range of errors on malformed content streams
         raise DocumentParseError("Text could not be extracted from the PDF.") from error
 
@@ -87,6 +83,7 @@ def _load_pdf(data: bytes, settings: Settings) -> LoadedDocument:
         Segment(text=text, page=page, section=section)
         for page, section, text in pdf_structure.split_at_headings(content_pages, headings)
     ]
+    segments, matrix_rows = _extract_control_matrix(segments, words_by_page)
     logger.info(
         "pdf_loaded",
         extra={
@@ -94,9 +91,38 @@ def _load_pdf(data: bytes, settings: Settings) -> LoadedDocument:
             "content_pages": len(content_pages),
             "toc_titles": len(toc_titles),
             "headings_located": len(headings),
+            "matrix_rows": len(matrix_rows),
         },
     )
-    return LoadedDocument(doc_type=DocumentType.PDF, segments=segments, unit_count=page_count)
+    return LoadedDocument(doc_type=DocumentType.PDF, segments=segments, unit_count=page_count, matrix_rows=matrix_rows)
+
+
+def _word_collector(sink: list[control_matrix.Word]):
+    def visit(text, cm, tm, font_dict, font_size):  # pypdf visitor signature
+        if text.strip():
+            x = cm[0] * tm[4] + cm[2] * tm[5] + cm[4]
+            y = cm[1] * tm[4] + cm[3] * tm[5] + cm[5]
+            sink.append(control_matrix.Word(x=x, y=y, text=text.strip()))
+
+    return visit
+
+
+def _extract_control_matrix(
+    segments: list[Segment], words_by_page: list[list[control_matrix.Word]]
+) -> tuple[list[Segment], list[MatrixRow]]:
+    """Pull a SOC 2 control test matrix out of the prose segments, one row per control."""
+    prose, matrix = control_matrix.partition_matrix(segments)
+    if not matrix:
+        return segments, []
+    pages = sorted({segment.page for segment in matrix if segment.page is not None})
+    try:
+        rows = control_matrix.rows_from_layout([(page, words_by_page[page - 1]) for page in pages])
+    except Exception:  # layout parsing is best-effort; the text path always works
+        logger.warning("matrix_layout_parse_failed", exc_info=True)
+        rows = []
+    if not rows:
+        rows = control_matrix.rows_from_text(matrix)
+    return prose, rows
 
 
 def _read_toc(reader: PdfReader, raw_texts: list[str]) -> tuple[set[int], list[str]]:

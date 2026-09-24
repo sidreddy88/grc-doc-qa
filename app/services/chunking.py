@@ -17,18 +17,29 @@ def chunk_document(document: LoadedDocument, settings: Settings) -> list[Chunk]:
     )
 
     chunks: list[Chunk] = []
+
+    def add(text: str, page: int | None, source_id: str | None, section: str | None, context: str | None = None):
+        text = text.strip()
+        if text:
+            chunks.append(
+                Chunk(
+                    chunk_id=len(chunks),
+                    text=text,
+                    page=page,
+                    source_id=source_id,
+                    section=section,
+                    index_context=context,
+                )
+            )
+
     for segment in document.segments:
         pieces = [segment.text] if len(segment.text) <= chunk_size else splitter.split_text(segment.text)
         for piece in pieces:
-            text = piece.strip()
-            if text:
-                chunks.append(
-                    Chunk(
-                        chunk_id=len(chunks),
-                        text=text,
-                        page=segment.page,
-                        source_id=segment.source_id,
-                        section=segment.section,
-                    )
-                )
+            add(piece, segment.page, segment.source_id, segment.section)
+    # Control test matrix rows (extracted by the PDF loader) are one chunk per control, kept whole unless unusually
+    # long: splitting mid-row is what extracting them avoids.
+    for row in document.matrix_rows:
+        pieces = [row.body] if len(row.body) <= 2 * chunk_size else splitter.split_text(row.body)
+        for piece in pieces:
+            add(piece, row.page, None, row.section, row.index_context)
     return chunks

@@ -17,6 +17,16 @@ class QuestionType(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class Segment:
+    """A run of document text with its location, before chunking."""
+
+    text: str
+    page: int | None = None
+    source_id: str | None = None
+    section: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Chunk:
     """A retrieval unit. PDF chunks carry a page; knowledge-base rows carry a source_id."""
 
@@ -25,12 +35,13 @@ class Chunk:
     page: int | None = None
     source_id: str | None = None
     section: str | None = None
+    index_context: str | None = None  # searchable context not shown to users, e.g. a control's criterion wording
 
     @property
     def index_text(self) -> str:
-        # Section title is indexed with the chunk so retrieval sees context the raw text lacks;
-        # citations and faithfulness checks still use the raw text.
-        return f"{self.section}\n{self.text}" if self.section else self.text
+        # Section title (and any index context) is indexed with the chunk so retrieval sees context the raw
+        # text lacks; citations and faithfulness checks still use the raw text.
+        return "\n".join(part for part in (self.section, self.index_context, self.text) if part)
 
 
 @dataclass(slots=True)
