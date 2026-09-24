@@ -14,8 +14,11 @@
     form { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 16px; }
     label { display: grid; gap: 6px; font-weight: 600; }
     label span { font-weight: 400; color: var(--muted); font-size: 13px; }
-    button { justify-self: start; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 9px 18px; font-size: 15px; cursor: pointer; }
-    button:disabled { opacity: .6; cursor: progress; }
+    .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 9px 18px; font-size: 15px; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    form[aria-busy="true"] button { cursor: progress; }
+    .hint { color: var(--muted); font-size: 13px; }
     #status { margin: 20px 0 8px; color: var(--muted); min-height: 1.5em; }
     #status.error { color: var(--err); }
     .meta { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
@@ -34,7 +37,7 @@
 <body>
 <main>
   <h1>Compliance document Q&amp;A</h1>
-  <p class="lede">Upload a questions file and a SOC 2 report (PDF) or security knowledge base (JSON). Answers are grounded in the document, with citations.</p>
+  <p class="lede">Upload a questions file and a SOC 2 report (PDF) or security knowledge base (JSON); both files are required. Answers are grounded in the document, with citations.</p>
 
   <form id="qa-form">
     <label>Questions file
@@ -45,7 +48,10 @@
       <span>PDF or JSON</span>
       <input type="file" name="document" accept=".pdf,.json,application/pdf,application/json" required>
     </label>
-    <button type="submit">Get answers</button>
+    <div class="actions">
+      <button type="submit" disabled aria-describedby="hint">Get answers</button>
+      <span id="hint" class="hint">Choose a questions file and a document to get answers.</span>
+    </div>
   </form>
 
   <div id="status" role="status" aria-live="polite"></div>
@@ -88,6 +94,10 @@
       el("div", { className: "question", textContent: result.question }),
     ]);
     if (result.items) {
+      // When no option applies, the answer describes what the document does say instead; show it above the options.
+      if (result.answer !== NOT_FOUND && result.items.every((item) => item.answer === NOT_FOUND)) {
+        card.append(el("div", { className: answerClass, textContent: result.answer }), ...citationList(result.citations));
+      }
       const list = el("ul", { className: "items" });
       for (const item of result.items) {
         list.append(el("li", {}, [el("strong", { textContent: `${item.item}: ` }), item.answer, ...citationList(item.citations)]));
@@ -99,10 +109,29 @@
     return card;
   }
 
+  const button = form.querySelector("button");
+  const hintEl = document.getElementById("hint");
+  const questionsInput = form.elements.questions;
+  const documentInput = form.elements.document;
+  let busy = false;
+
+  // Both files are required: keep the button disabled, and say what's missing, until both are chosen.
+  function updateReadiness() {
+    const missing = [];
+    if (!questionsInput.files.length) missing.push("a questions file");
+    if (!documentInput.files.length) missing.push("a document");
+    button.disabled = busy || missing.length > 0;
+    hintEl.textContent = missing.length ? `Choose ${missing.join(" and ")} to get answers.` : "";
+  }
+  questionsInput.addEventListener("change", updateReadiness);
+  documentInput.addEventListener("change", updateReadiness);
+  updateReadiness();  // a browser may restore chosen files on reload
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const button = form.querySelector("button");
-    button.disabled = true;
+    busy = true;
+    form.setAttribute("aria-busy", "true");
+    updateReadiness();
     resultsEl.replaceChildren();
     metaEl.textContent = "";
     setStatus("Reading the document and answering… the first request for a new document takes longer while it is indexed.");
@@ -125,7 +154,9 @@
     } catch (error) {
       setStatus(`Could not reach the server: ${error.message}`, true);
     } finally {
-      button.disabled = false;
+      busy = false;
+      form.removeAttribute("aria-busy");
+      updateReadiness();
     }
   });
 </script>
