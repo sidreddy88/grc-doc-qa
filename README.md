@@ -221,7 +221,7 @@ Tests check behaviour; the eval measures quality. [`evals/soc2_retrieval.json`](
 | Answerable questions wrongly stopped by the relevance gate | 0 |
 | Unanswerable questions stopped by the gate, before any LLM call | 5 / 8 |
 | Answerable questions answered, citing an evidence page | 24–26 / 30 |
-| Unanswerable questions answered "Not found" | 8 / 8 in every run |
+| Unanswerable questions answered "Not found" | 7–8 / 8 (an occasional miss is an honest partial answer, e.g. "SAML isn't mentioned, but SSO is enforced") |
 | Sample questions meeting their target answer | 3–4 / 5 (see Limitations) |
 
 ## Design decisions and trade-offs
