@@ -145,21 +145,21 @@ Errors share one shape: `{"error": {"code", "message", "request_id"}}`.
 flowchart TD
     A([POST /qa with questions + document]) --> B{Files valid?}
     B -- no --> E[4xx error with code and request id]
-    B -- yes --> C{Document already indexed?<br/>lookup by SHA-256}
+    B -- yes --> C{Document<br/>already indexed?<br/>by SHA-256}
     C -- no --> D[Parse and chunk<br/>PDF: pages tagged with ToC sections<br/>JSON: one chunk per record]
     D --> D2[Embed chunks into FAISS<br/>and build a BM25 index]
     D2 --> F
     C -- yes --> F[Answer each unique question in parallel]
-    F --> G{Answer cache hit?<br/>exact match, or cosine ≥ 0.97}
+    F --> G{Answer<br/>cache hit?<br/>exact or<br/>cosine ≥ 0.97}
     G -- yes --> R
     G -- no --> H[Classify the question<br/>boolean · factual · explanatory · checklist]
     H --> I[Hybrid retrieval<br/>FAISS + BM25 → fusion → cross-encoder → RRF<br/>plus per option or per question part]
-    I --> J{Best chunk relevant enough?}
+    I --> J{Best chunk<br/>relevant<br/>enough?}
     J -- no --> NF[Not found in document]
     J -- yes --> K[gpt-4o-mini drafts the answer<br/>citing sources with verbatim quotes]
-    K --> L{Layer 1<br/>do the quotes exist in the cited chunks?}
+    K --> L{Layer 1<br/>quotes exist<br/>in cited<br/>chunks?}
     L -- no --> NF
-    L -- yes --> M{Layer 2<br/>does an LLM judge find the claims supported?}
+    L -- yes --> M{Layer 2<br/>LLM judge:<br/>claims<br/>supported?}
     M -- no --> NF
     M -- yes --> OK[Answer with page and section citations]
     OK --> S[(Answer cache)]
